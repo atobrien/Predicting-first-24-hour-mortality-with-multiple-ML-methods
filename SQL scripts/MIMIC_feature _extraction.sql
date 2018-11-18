@@ -131,7 +131,24 @@ WITH labs AS
       SELECT
       gcs.*
       FROM `physionet-data.mimiciii_derived.bloodgasfirstdayarterial` gcs
+      ),
+      
+      detail AS
+      (
+      SELECT
+      id.subject_id,
+      id.hadm_id,
+      id.icustay_id,
+      id.gender,
+      id.los_hospital,
+      id.admission_age,
+      id.admission_type,
+      id.los_icu,
+      id.first_icu_stay
+      FROM
+      `physionet-data.mimiciii_derived.icustay_detail` id
       )
+      
 
 SELECT *
 FROM labs
@@ -146,5 +163,5 @@ JOIN g
 USING (subject_id, hadm_id, icustay_id)
 JOIN fl
 USING (subject_id, hadm_id, icustay_id)
-
-      
+JOIN detail
+USING (subject_id, hadm_id, icustay_id)
