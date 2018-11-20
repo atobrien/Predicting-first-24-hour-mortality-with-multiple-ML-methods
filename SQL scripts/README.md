@@ -1,4 +1,4 @@
-Contents of this folder
+# Contents 
 
 This folder contains SQL scripts to generate materialized views in Google Bigquery database with MIMIC. 
 
