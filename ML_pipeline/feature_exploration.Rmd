@@ -1,0 +1,30 @@
+---
+title: "feature_exploration"
+output: html_document
+---
+```{r}
+library(dplyr)
+df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
+
+# pre process the names of columns
+colnames(df) <- gsub('\"', '', colnames(df))
+colnames(df)[1] <- "index"
+
+#preprocess the names of rows
+rownames(df) <- gsub('"', '', df$index)
+drops <- c("index")
+df <- df[ , !(names(df) %in% drops)]
+
+#head of dataframe
+df %>% head()
+```
+
+Visualization of missing data:
+```{r}
+library(Amelia)
+missmap(df)
+```
+```{r}
+
+```
+
