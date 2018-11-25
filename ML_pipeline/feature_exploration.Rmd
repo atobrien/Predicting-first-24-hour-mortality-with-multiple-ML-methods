@@ -19,12 +19,22 @@ df <- df[ , !(names(df) %in% drops)]
 df %>% head()
 ```
 
+Preprocess the values of ICUSTAY_AGE_GROUP to get rid of the quotes:
+```{r}
+df$ICUSTAY_AGE_GROUP <- gsub('"', '', df$ICUSTAY_AGE_GROUP)
+```
+
+
 Visualization of missing data:
 ```{r}
 library(Amelia)
 missmap(df)
 ```
-```{r}
 
+We can start working with columns that have less than 20% of missing data:
+```{r}
+threshold <- length(nrow(df))*0.20
+df2 <- df[colSums(is.na(df)) < threshold]
+summary(df2)
 ```
 
