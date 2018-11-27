@@ -23,7 +23,10 @@ df %>% head()
 df %>% group_by(OASIS) %>% 
   summarize(prop=sum(icustay_expire_flag)/n()) %>% 
   ggplot(aes(x=OASIS,y=prop))+
-  geom_point()
+  geom_point()+
+  ylab("Proportion of people who died")+
+  ggtitle("Proportion of people who died during their first 24 hours in the ICU")+
+  xlab("OASIS score")
 ```
 
 

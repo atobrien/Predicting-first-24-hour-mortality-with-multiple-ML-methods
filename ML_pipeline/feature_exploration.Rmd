@@ -19,9 +19,10 @@ df <- df[ , !(names(df) %in% drops)]
 df %>% head()
 ```
 
-Preprocess the values of ICUSTAY_AGE_GROUP to get rid of the quotes:
+Preprocess the values of some columns to get rid of the quotes:
 ```{r}
 df$ICUSTAY_AGE_GROUP <- gsub('"', '', df$ICUSTAY_AGE_GROUP)
+df$first_icu_stay <- gsub('"', '', df$first_icu_stay)
 ```
 
 
@@ -31,10 +32,62 @@ library(Amelia)
 missmap(df)
 ```
 
+Values to check: temperature, urine
+
+Get rid of patients that have missing gender:
+```{r}
+df <- df %>% filter(!is.na(gender))
+```
+
 We can start working with columns that have less than 20% of missing data:
 ```{r}
-threshold <- length(nrow(df))*0.20
+threshold <- nrow(df)*0.20
 df2 <- df[colSums(is.na(df)) < threshold]
-summary(df2)
+# summary(df2)
 ```
+
+```{r}
+missmap(df2)
+```
+
+Remove patients that have lots of missing values:
+```{r}
+# threshold <- length(df2)*0.0001
+df3 <- df2[rowSums(is.na(df2)) < 1,]
+# summary(df3)
+missmap(df3)
+```
+
+
+```{r}
+drop_col <- c("subject_id","hadm_id","icustay_id","ICUSTAY_AGE_GROUP","hospital_expire_flag","OASIS","OASIS_PROB")
+df4 <- df3[ , !(names(df3) %in% drop_col)]
+summary(df4)
+```
+```{r}
+library(ggplot2)
+df4 %>% ggplot(aes(x=age,y=..density..))+
+  geom_histogram()
+```
+
+Pre-processing of age:
+-replace values bigger than 200 by 90
+```{r}
+df4 <- df4 %>% 
+  mutate(age=ifelse(age>=90,91.5,age))
+
+df4 %>% ggplot(aes(x=age,y=..density..))+
+  geom_histogram()
+```
+
+Pre-processing categorical variable into 0vs1 columns:
+```{r}
+# 1 is female and 0 is male
+df4 <- df4 %>% mutate(gender=ifelse(gender=='""F""', 1,0))
+df4 <- df4 %>% mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
+
+
+```
+
+
 
