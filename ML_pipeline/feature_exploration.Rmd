@@ -2,8 +2,17 @@
 title: "feature_exploration"
 output: html_document
 ---
+
 ```{r}
 library(dplyr)
+library(ggplot2) ## graphs 
+library(Amelia) ## missing data 
+library(caret)
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
 df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
 
 # pre process the names of columns
@@ -23,12 +32,13 @@ Preprocess the values of some columns to get rid of the quotes:
 ```{r}
 df$ICUSTAY_AGE_GROUP <- gsub('"', '', df$ICUSTAY_AGE_GROUP)
 df$first_icu_stay <- gsub('"', '', df$first_icu_stay)
+df$gender <- gsub('""', '', df$gender)
+df$admission_type <- gsub('""', '', df$admission_type)
 ```
 
 
 Visualization of missing data:
 ```{r}
-library(Amelia)
 missmap(df)
 ```
 
@@ -60,34 +70,113 @@ missmap(df3)
 
 
 ```{r}
-drop_col <- c("subject_id","hadm_id","icustay_id","ICUSTAY_AGE_GROUP","hospital_expire_flag","OASIS","OASIS_PROB")
-df4 <- df3[ , !(names(df3) %in% drop_col)]
+df4<-df3 %>% 
+  select(-c("subject_id","hadm_id","ICUSTAY_AGE_GROUP","hospital_expire_flag","OASIS","OASIS_PROB"))
+
 summary(df4)
+
 ```
 ```{r}
-library(ggplot2)
 df4 %>% ggplot(aes(x=age,y=..density..))+
   geom_histogram()
 ```
 
 Pre-processing of age:
--replace values bigger than 200 by 90
+-replace values bigger than 200 by 91.5
 ```{r}
 df4 <- df4 %>% 
   mutate(age=ifelse(age>=90,91.5,age))
 
 df4 %>% ggplot(aes(x=age,y=..density..))+
-  geom_histogram()
+  geom_histogram(col="grey")
 ```
 
-Pre-processing categorical variable into 0vs1 columns:
+Pre-processing categorical variable into 0vs1 columns and making dummies:
 ```{r}
-# 1 is female and 0 is male
-df4 <- df4 %>% mutate(gender=ifelse(gender=='""F""', 1,0))
-df4 <- df4 %>% mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
-
+df5<-df4 %>% 
+  mutate(gender=ifelse(gender=="F", 1,0),# 1 is female and 0 is male
+         first_icu_stay=ifelse(first_icu_stay==FALSE,0,1),
+         v=1, # needed to make dummies 
+         admission_type=paste("AdmissionType",admission_type,sep="_"))%>% 
+  mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1)) %>%
+  spread(admission_type, v, fill = 0)
 
 ```
+
+
+Visualisation Lab Results
+```{r}
+labresults<- df5 %>%
+  select(icustay_id, icustay_expire_flag, ANIONGAP_min:WBC_max)%>%
+  gather(., test, value, -icustay_expire_flag, -icustay_id)%>%
+  separate(test, into = c("test", "MinOrMax"), sep="_")
+
+plot<-labresults %>% 
+  split(.$test) %>%
+  map(~ggplot(.,aes(x=value, col=MinOrMax))+
+  geom_density()+
+    theme_bw()+
+ggtitle(paste("distributions",names(.x%>%split(.$test)))))
+paths <- stringr::str_c("LabtestDistribution",names(plot), ".jpg")
+pwalk(list(paths, plot), ggsave, path = '../graphs')
+
+labresults<- labresults %>% 
+  spread(., MinOrMax, value)
+
+plot2<-labresults %>% 
+  mutate(died=ifelse(icustay_expire_flag==1, "Died", "Survived"))%>%
+  group_by(min, max, test, died)%>%
+  mutate(howmany=n())%>%
+  ungroup()%>%
+  split(.$test) %>%
+  map(~ggplot(.,aes(x=max, y=min, size=howmany, col=died))+
+  geom_point(alpha=0.2)+
+    theme_bw()+
+ggtitle(paste("Scatter plot for",names(.x%>%split(.$test)))))
+
+plot2[1]
+paths <- stringr::str_c("LabtestScatter",names(plot2), ".jpg")
+pwalk(list(paths, plot2), ggsave, path = '../graphs')
+
+
+plot3<-labresults %>% 
+  mutate(died=ifelse(icustay_expire_flag==1, "Died", "Survived")) %>%
+group_by(min, max, test,died)%>%
+  mutate(howmany=n())%>%
+  ungroup()%>%
+  mutate(facet=died)%>%
+  uncount(2, .id="id")%>%
+  mutate(died=ifelse(id==2 & died=="Died", "Died*", died))%>%
+  mutate(died=ifelse(id==2 & died=="Survived", "Survived*", died))%>%
+  mutate(facet=ifelse(id==1, died, "both"))%>%
+  split(.$test) %>%
+  map(~ggplot(.,aes(x=max, y=min, size=howmany, colour=died))+
+  geom_point(alpha=0.2)+
+    scale_color_manual(breaks = c("Died", "Died*", "Survived", "Survived*"),
+                        values=c("red", "red", "green", "green"))+
+    theme_bw()+
+    facet_grid(~facet)+
+ggtitle(paste("Scatter plot faceted for",names(.x%>%split(.$test)))))
+
+plot3[1]
+paths <- stringr::str_c("LabtestScatterFacet",names(plot3), ".jpg")
+pwalk(list(paths, plot3), ggsave, path = '../graphs')
+```
+
+
+
+Normalization
+
+```{r}
+## MINMAX NORMALIZATION: 
+normalize <- function(x) {
+  num <- x - min(x, na.rm=T)
+  denom <- max(x, na.rm=T) - min(x, na.rm=T)
+  return (num/denom)
+}
+
+```
+
 
 
 
