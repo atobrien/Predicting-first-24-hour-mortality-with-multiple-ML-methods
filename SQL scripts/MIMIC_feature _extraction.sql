@@ -60,50 +60,7 @@ WITH labs AS
       AVG(PaO2FiO2) as PaO2FiO2_avg
       FROM `physionet-data.mimiciii_derived.bloodgasfirstdayarterial` a
       GROUP BY icustay_id, hadm_id,subject_id
-      ),
-      
-      fl AS 
-      (
-      SELECT 
-      a.subject_id,
-      a.hadm_id,
-      a.icustay_id,
-      FIRST_VALUE(PO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_PO2,
-      LAST_VALUE(PO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_PO2,
-      FIRST_VALUE(spo2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_SPO2,
-      LAST_VALUE(spo2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_SPO2,
-      FIRST_VALUE(PCO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_PCO2,
-      LAST_VALUE(PCO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_PCO2,
-      FIRST_VALUE(PH) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_PH,
-      LAST_VALUE(PH) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_PH,
-      FIRST_VALUE(TOTALCO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_TOTALCO2,
-      LAST_VALUE(TOTALCO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_TOTALCO2,
-      FIRST_VALUE(HEMATOCRIT) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_HEMATOCRIT,
-      LAST_VALUE(HEMATOCRIT) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_HEMATOCRIT,
-      FIRST_VALUE(CARBOXYHEMOGLOBIN) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_CARBOXYHEMOGLOBIN,
-      LAST_VALUE(CARBOXYHEMOGLOBIN) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_CARBOXYHEMOGLOBIN,
-      FIRST_VALUE(METHEMOGLOBIN) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_METHEMOGLOBIN,
-      LAST_VALUE(METHEMOGLOBIN) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_METHEMOGLOBIN,
-      FIRST_VALUE(CHLORIDE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_CHLORIDE,
-      LAST_VALUE(CHLORIDE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_CHLORIDE,
-      FIRST_VALUE(CALCIUM) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_CALCIUM,
-      LAST_VALUE(CALCIUM) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_CALCIUM,
-      FIRST_VALUE(TEMPERATURE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_TEMP,
-      LAST_VALUE(TEMPERATURE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_TEMP,
-      FIRST_VALUE(POTASSIUM) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_POTASSIUM,
-      LAST_VALUE(POTASSIUM) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_POTASSIUM,
-      FIRST_VALUE(SODIUM) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_SODIUM,
-      LAST_VALUE(SODIUM) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_SODIUM, 
-      FIRST_VALUE(LACTATE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_LACTATE,
-      LAST_VALUE(LACTATE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_LACTATE,   
-      FIRST_VALUE(GLUCOSE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_GLUCOSE,
-      LAST_VALUE(GLUCOSE) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_GLUCOSE,      
-      FIRST_VALUE(BASEEXCESS) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_BASEEXCESS,
-      LAST_VALUE(BASEEXCESS) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_BASEEXCESS,
-      FIRST_VALUE(PaO2FiO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS FIRST_PaO2FiO2,
-      LAST_VALUE(PaO2FiO2) OVER (PARTITION BY icustay_id ORDER BY charttime) AS LAST_PaO2FiO2
-      FROM `physionet-data.mimiciii_derived.bloodgasfirstdayarterial` a
-      ),
+      ),      
          
       v AS
       (
@@ -160,8 +117,6 @@ USING (subject_id, hadm_id, icustay_id)
 JOIN v
 USING (subject_id, hadm_id, icustay_id)
 JOIN g
-USING (subject_id, hadm_id, icustay_id)
-JOIN fl
 USING (subject_id, hadm_id, icustay_id)
 JOIN detail
 USING (subject_id, hadm_id, icustay_id)
