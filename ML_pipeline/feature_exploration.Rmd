@@ -163,19 +163,11 @@ paths <- stringr::str_c("LabtestScatterFacet",names(plot3), ".jpg")
 pwalk(list(paths, plot3), ggsave, path = '../graphs')
 ```
 
-
-
-Normalization
-
+Write the df5 file into a csv file:
 ```{r}
-## MINMAX NORMALIZATION: 
-normalize <- function(x) {
-  num <- x - min(x, na.rm=T)
-  denom <- max(x, na.rm=T) - min(x, na.rm=T)
-  return (num/denom)
-}
-
+write.csv(df5, '../data/cohort_preprocessed.csv')
 ```
+
 
 
 
