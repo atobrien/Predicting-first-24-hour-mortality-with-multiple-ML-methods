@@ -7,7 +7,7 @@ output: html_document
 library(dplyr)
 data <- read.csv("../data/cohort_preprocessed.csv")
 data <- data %>% select(-c(X))
-# rownames(data) <- data$icustay_id
+rownames(data) <- data$icustay_id
 data %>% head()
 ```
 
@@ -29,6 +29,36 @@ preprocessParams <- preProcess(data[,col_to_standardize], method=c("center", "sc
 transformed <- predict(preprocessParams, data[,col_to_standardize])
 # transformed %>% head()
 final <- cbind(transformed, data$icustay_expire_flag)
+colnames(final) <- c(colnames(transformed), "icustay_expire_flag")
 final %>% head()
+```
+
+```{r}
+library(FactoMineR)
+res.pca = PCA(final[,1:62], scale.unit=TRUE, ncp=5, graph=T)
+```
+
+Data split:
+```{r}
+final[,"icustay_expire_flag"] <- factor(final[,"icustay_expire_flag"])
+trainIndex <- createDataPartition(final$icustay_expire_flag, p=0.80, list=FALSE)
+dataTrain <- final[ trainIndex,]
+dataTest <- final[-trainIndex,]
+```
+
+Naive Bayes Classifier:
+```{r}
+library(klaR)
+# train a naive Bayes model
+fit <- NaiveBayes(icustay_expire_flag~., data=dataTrain)
+# make predictions
+predictions <- predict(fit, dataTest[,1:62])
+# summarize results
+confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
+```
+
+Undersampling of class 0 because we have an imbalanced dataset:
+```{r}
+
 ```
 
