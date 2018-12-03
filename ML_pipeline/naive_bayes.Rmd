@@ -59,6 +59,6 @@ confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
 
 Undersampling of class 0 because we have an imbalanced dataset:
 ```{r}
-
+# will work on that later
 ```
 
