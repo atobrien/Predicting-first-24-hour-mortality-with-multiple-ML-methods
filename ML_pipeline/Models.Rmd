@@ -1,0 +1,103 @@
+---
+title: "Models"
+author: "Maja Garbulinska"
+date: "12/3/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyverse)
+data <- read.csv("../data/cohort_preprocessed.csv")
+rownames(data) <- data$icustay_id
+data %>% head()
+data<- data %>%select(icustay_id:age, preiculos, temp, urineoutput,HeartRate_Min:AdmissionType_URGENT,electivesurgery)%>%
+  select(icustay_id, icustay_expire_flag, gender,  first_icu_stay,
+         electivesurgery,AdmissionType_ELECTIVE:AdmissionType_URGENT, everything())
+```
+
+```{r}
+ToTransform<-data%>%select(ANIONGAP_min:los_icu)
+```
+
+Standardize
+```{r}
+preprocessParams <- preProcess(ToTransform, method=c("center", "scale"))
+```
+
+```{r}
+print(preprocessParams)
+```
+Transform:
+```{r}
+transformed <- predict(preprocessParams, ToTransform)
+data[,9:51] <- transformed
+data<-data%>% select(-c(icustay_id))
+```
+
+
+```{r}
+positive<-data %>% 
+  filter(icustay_expire_flag==1)
+negative<-data %>% 
+  filter(icustay_expire_flag==0)
+
+lengthpos<-length(positive$los_icu)
+negativefinal<-sample_n(negative, lengthpos, replace=F)
+data<-bind_rows(positive, negativefinal)
+```
+
+Split into 80/20 train/test
+```{r}
+set.seed(7)
+trainIndex<- createDataPartition(data$icustay_expire_flag, p=.8, list=F, times=1)
+TrainSet<-data[trainIndex,]
+TestSet<- data[-trainIndex,]
+```
+
+
+Make the outcome variable appropriate for the caret package 
+```{r}
+TrainSet$icustay_expire_flag<- as.factor(TrainSet$icustay_expire_flag)
+levels(TrainSet$icustay_expire_flag) <- c("X0", "X1")
+TestSet$icustay_expire_flag<- as.factor(TestSet$icustay_expire_flag)
+levels(TestSet$icustay_expire_flag) <- c("X0", "X1")
+```
+
+
+
+
+
+Train a random forest 
+```{r}
+library(pROC)
+set.seed(7)
+randomforest<- train(icustay_expire_flag ~ ., 
+                 data = TrainSet, 
+                 method = "rf", 
+                 metric="ROC",
+                 trControl=trainControl(method="cv",
+                           summaryFunction=twoClassSummary,
+                           number= 10, ## chosing this because small data 
+                           classProbs = TRUE))
+
+print(randomforest)
+print(randomforest$finalModel)
+
+predictions<-predict.train(object=randomforest,TestSet,type="prob")
+
+
+predictions<-predict.train(object=randomforest,TestSet,type="raw")
+confusionMatrix(predictions,TestSet$icustay_expire_flag)
+roc_obj <- roc(as.numeric(TestSet$icustay_expire_flag), as.numeric(predictions))
+auc(roc_obj)
+
+variableimportancerandomforest <- varImp(randomforest, scale = FALSE)
+variableimportancerandomforest
+
+```
+
