@@ -97,11 +97,69 @@ df5<-df4 %>%
   mutate(gender=ifelse(gender=="F", 1,0),# 1 is female and 0 is male
          first_icu_stay=ifelse(first_icu_stay==FALSE,0,1),
          v=1, # needed to make dummies 
-         admission_type=paste("AdmissionType",admission_type,sep="_"))%>% 
+         admission_type=paste("AdmissionType",admission_type,sep="_")) %>% 
   mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1)) %>%
-  spread(admission_type, v, fill = 0)
-
+  spread(admission_type, v, fill = 0) %>%
+  filter(age>17) %>% ## leave only adults 
+  unique() %>% ## unique entries 
+  mutate(urineoutput=abs(urineoutput)) %>% ## we have negative values. I change them to positive
+  
 ```
+
+
+Optional if you want to reduce outliers 
+```{r}
+df6<-df5 %>%  
+  select(HeartRate_Min:RespRate_Mean) %>%
+  gather(variable, value) %>%
+  group_by(variable) %>%
+  mutate(mean=mean(value), 
+         twosd=(sd(value))*2,
+         lower=mean-twosd,
+         upper=mean+twosd) %>%
+  select(-c(value))%>%
+  unique()
+
+df7<-df5 %>% 
+  select(icustay_id,HeartRate_Min:RespRate_Mean) %>%
+  gather(variable, value, -icustay_id)
+
+df8<-left_join(df7,df6)%>%
+  filter(value>=lower & value<=upper)%>%
+  select(icustay_id, variable, value)%>%
+  spread(variable, value)
+
+df8 <- df8[rowSums(is.na(df8)) < 1,]
+df8 <- df8 %>% select(icustay_id)%>% unique()
+
+df9<- left_join(df8, df5)
+
+summary(df5$icustay_expire_flag)
+summary(df9$icustay_expire_flag)
+```
+
+
+
+
+
+
+Write the df5 file into a csv file:
+```{r}
+write.csv(df5, '../data/cohort_preprocessed.csv')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 Visualisation Lab Results
@@ -163,12 +221,90 @@ paths <- stringr::str_c("LabtestScatterFacet",names(plot3), ".jpg")
 pwalk(list(paths, plot3), ggsave, path = '../graphs')
 ```
 
-Write the df5 file into a csv file:
+
+
+
+Visualisation Vitals
 ```{r}
-write.csv(df5, '../data/cohort_preprocessed.csv')
+Vitals<- df5 %>%
+  select(icustay_id, icustay_expire_flag, heartrate:temp_score,HeartRate_Min:RespRate_Mean) %>%
+  mutate(icustay_expire_flag=as.character(icustay_expire_flag)) %>%
+  gather(vital, value, -icustay_id, -icustay_expire_flag)
+
+
+## jitters
+Plots<-Vitals %>% 
+  split(.$vital) %>%
+  map(~ggplot(.,aes(x=icustay_expire_flag, y=value, alpha=0.1))+
+        ggtitle(paste("Variable vs Outcome for ",names(.x%>%split(.$vital))))+
+        geom_jitter(width = 0.3))
+Plots
+paths <- stringr::str_c("Jitter",names(Plots), ".jpg")
+pwalk(list(paths, Plots), ggsave, path = '../graphs')
+
+
+
+
 ```
 
 
+Visualisation Lab Results
+```{r}
+labresults<- df5 %>%
+  select(icustay_id, icustay_expire_flag, ANIONGAP_min:WBC_max)%>%
+  gather(., test, value, -icustay_expire_flag, -icustay_id)%>%
+  separate(test, into = c("test", "MinOrMax"), sep="_")
+
+plot<-labresults %>% 
+  split(.$test) %>%
+  map(~ggplot(.,aes(x=value, col=MinOrMax))+
+  geom_density()+
+    theme_bw()+
+ggtitle(paste("distributions",names(.x%>%split(.$test)))))
+paths <- stringr::str_c("LabtestDistribution",names(plot), ".jpg")
+pwalk(list(paths, plot), ggsave, path = '../graphs')
+
+labresults<- labresults %>% 
+  spread(., MinOrMax, value)
+
+plot2<-labresults %>% 
+  mutate(died=ifelse(icustay_expire_flag==1, "Died", "Survived"))%>%
+  group_by(min, max, test, died)%>%
+  mutate(howmany=n())%>%
+  ungroup()%>%
+  split(.$test) %>%
+  map(~ggplot(.,aes(x=max, y=min, size=howmany, col=died))+
+  geom_point(alpha=0.2)+
+    theme_bw()+
+ggtitle(paste("Scatter plot for",names(.x%>%split(.$test)))))
+
+plot2[1]
+paths <- stringr::str_c("LabtestScatter",names(plot2), ".jpg")
+pwalk(list(paths, plot2), ggsave, path = '../graphs')
+
+
+plot3<-labresults %>% 
+  mutate(died=ifelse(icustay_expire_flag==1, "Died", "Survived")) %>%
+group_by(min, max, test,died)%>%
+  mutate(howmany=n())%>%
+  ungroup()%>%
+  mutate(facet=died)%>%
+  uncount(2, .id="id")%>%
+  mutate(died=ifelse(id==2 & died=="Died", "Died*", died))%>%
+  mutate(died=ifelse(id==2 & died=="Survived", "Survived*", died))%>%
+  mutate(facet=ifelse(id==1, died, "both"))%>%
+  split(.$test) %>%
+  map(~ggplot(.,aes(x=max, y=min, size=howmany, colour=died))+
+  geom_point(alpha=0.2)+
+    scale_color_manual(breaks = c("Died", "Died*", "Survived", "Survived*"),
+                        values=c("red", "red", "green", "green"))+
+    theme_bw()+
+    facet_grid(~facet)+
+ggtitle(paste("Scatter plot faceted for",names(.x%>%split(.$test)))))
+
+plot3[1]
+paths <- stringr::str_c("LabtestScatterFacet",names(plot3), ".jpg")
+pwalk(list(paths, plot3), ggsave, path = '../graphs')
 
 
 
