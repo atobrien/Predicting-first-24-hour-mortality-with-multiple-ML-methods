@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # Import the libraries
 library(dplyr)
 library(caTools)
+library(caret)
 
 # Import the data
 df_log<-read.csv("C:/Users/Me/Desktop/cohort_preprocessed.csv")
@@ -30,10 +31,16 @@ split = sample.split(df_icu$icustay_id, SplitRatio = 0.60)
 training_set <- subset(df_icu, split == TRUE)
 counter_set <- subset(df_icu, split == FALSE)
 
-# Split the counterset into a Validation ser and a Test set
+# Split the counterset into a Validation set and a test set
 split = sample.split(counter_set$icustay_id, SplitRatio = 0.50)
 validation_set <-subset(counter_set, split == TRUE)
 test_set <-subset(counter_set, split == FALSE)
+
+# Clean global environment objects
+rm(df_icu) 
+rm(df_log)
+rm(counter_set)
+rm(split)
 
 # Determine number of maximum variables allowed in 
 # the model (i.e. to prevent overfitting)
@@ -64,26 +71,43 @@ training_set <- training_set %>%
   select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
             meanbp_score, resprate_score, temp_score, UrineOutput_score, 
             mechvent_score, mechvent, electivesurgery, electivesurgery_score,
-            first_icu_stay, gender))
+            first_icu_stay, gender, age, icustay_id, X))
 
 validation_set <- validation_set %>% 
   mutate(intubated=mechvent,sex=gender, outcome=icustay_expire_flag) %>%
   select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
             meanbp_score, resprate_score, temp_score, UrineOutput_score, 
             mechvent_score, mechvent, electivesurgery, electivesurgery_score,
-            first_icu_stay, gender))
+            first_icu_stay, gender, age, icustay_id, X))
 
 test_set <- test_set %>% 
   mutate(intubated=mechvent,sex=gender, outcome=icustay_expire_flag) %>%
   select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
             meanbp_score, resprate_score, temp_score, UrineOutput_score, 
             mechvent_score, mechvent, electivesurgery, electivesurgery_score,
-            first_icu_stay, gender))
+            first_icu_stay, gender, age, icustay_id, X))
+
+                                            # fix age
 
 # Feature Scaling
 training_set[ , 3:48] <- scale(training_set[ , 3:48])
 validation_set[ , 3:48] <- scale(validation_set[ , 3:48])
 test_set[ , 3:48] <- scale(test_set[ , 3:48])
+
+# Fitting Logistic Regression to the Training set
+classifier = glm(formula = outcome ~ .,
+                 family = binomial,
+                 data = training_set)
+
+# Purposeful Selection
+                            # I need to do this to omptimize the logistic model
+
+# Predicting the Test set results
+prob_pred = predict(classifier, type = 'response', newdata = validation_set[-51])
+y_pred = ifelse(prob_pred > 0.5, 1, 0)
+
+# Set up the Confusion Matrix
+confusionMatrix(data = as.factor(y_pred), reference = as.factor(validation_set$outcome))
 
 
 ```
