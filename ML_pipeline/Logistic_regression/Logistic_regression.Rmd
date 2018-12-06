@@ -1,0 +1,91 @@
+---
+title: "Logistic regression BST 260 Project"
+author: "Anthony O'Brien"
+date: "December 6, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Logistic Regression 
+
+
+```{r}
+# Import the libraries
+library(dplyr)
+library(caTools)
+
+# Import the data
+df_log<-read.csv("C:/Users/Me/Desktop/cohort_preprocessed.csv")
+
+# Select only unique ICU stays
+df_icu<-df_log %>% 
+  filter(first_icu_stay==1)
+
+# Split the dataset into Training set, and counter set. 
+set.seed(1988)
+split = sample.split(df_icu$icustay_id, SplitRatio = 0.60)
+training_set <- subset(df_icu, split == TRUE)
+counter_set <- subset(df_icu, split == FALSE)
+
+# Split the counterset into a Validation ser and a Test set
+split = sample.split(counter_set$icustay_id, SplitRatio = 0.50)
+validation_set <-subset(counter_set, split == TRUE)
+test_set <-subset(counter_set, split == FALSE)
+
+# Determine number of maximum variables allowed in 
+# the model (i.e. to prevent overfitting)
+# This is given by: minimum(event/10,non-event/10) 
+# In this case event is 1=death in icustay_expire_flag. 
+
+training_set %>%
+  group_by(icustay_expire_flag) %>% 
+  summarize(count=sum(icustay_expire_flag==0 | icustay_expire_flag==1))
+
+validation_set %>%
+  group_by(icustay_expire_flag) %>% 
+  summarize(count=sum(icustay_expire_flag==0 | icustay_expire_flag==1))
+
+test_set %>%
+  group_by(icustay_expire_flag) %>% 
+  summarize(count=sum(icustay_expire_flag==0 | icustay_expire_flag==1))
+
+# Based on the minimum number of recorded events for the outcome 
+# a maximum of 68 (682/10) variables can be included in the 
+# logistic regression to prevent overfitting of the model. 
+
+# Create a last column titled outcome, place categorical variables at end
+# drop unwanted columns
+
+training_set <- training_set %>% 
+  mutate(intubated=mechvent,sex=gender, outcome=icustay_expire_flag) %>%
+  select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
+            meanbp_score, resprate_score, temp_score, UrineOutput_score, 
+            mechvent_score, mechvent, electivesurgery, electivesurgery_score,
+            first_icu_stay, gender))
+
+validation_set <- validation_set %>% 
+  mutate(intubated=mechvent,sex=gender, outcome=icustay_expire_flag) %>%
+  select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
+            meanbp_score, resprate_score, temp_score, UrineOutput_score, 
+            mechvent_score, mechvent, electivesurgery, electivesurgery_score,
+            first_icu_stay, gender))
+
+test_set <- test_set %>% 
+  mutate(intubated=mechvent,sex=gender, outcome=icustay_expire_flag) %>%
+  select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
+            meanbp_score, resprate_score, temp_score, UrineOutput_score, 
+            mechvent_score, mechvent, electivesurgery, electivesurgery_score,
+            first_icu_stay, gender))
+
+# Feature Scaling
+training_set[ , 3:48] <- scale(training_set[ , 3:48])
+validation_set[ , 3:48] <- scale(validation_set[ , 3:48])
+test_set[ , 3:48] <- scale(test_set[ , 3:48])
+
+
+```
+
+
