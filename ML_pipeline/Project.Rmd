@@ -29,7 +29,9 @@ We were inspired by a paper written by our MIT course faculty on [Real-time mort
 # Initial Questions: 
 ###What questions are you trying to answer? How did these questions evolve over the course of the project? What new questions did you consider in the course of your analysis?
 
-The main question we are trying to answer is as follows: can we accurately predict a patient's in-hospital mortality based on their first-day readings in the ICU? Over the course of our project, we also wondered if we could understand the impact of the first 24 hours in the ICU on longer-term patient mortality, though it's clear that as more time passes from the initial ICU stay to the time of death, there could be additional factors to take into account, a number of which do not have corresponding data. After working with the data, we also faced the challenge of dealing with patients who were admitted to the ICU at multiple time points, sometimes within the same hospital admission. To focus our analysis, we decided to analyze
+The main question we are trying to answer is as follows: can we accurately predict a patient's in-hospital mortality based on their first-day readings in the ICU? Over the course of our project, we also wondered if we could understand the impact of the first 24 hours in the ICU on longer-term patient mortality, though it's clear that as more time passes from the initial ICU stay to the time of death, there could be additional factors to take into account, a number of which do not have corresponding data. After working with the data, we also faced the challenge of dealing with patients who were admitted to the ICU at multiple time points, sometimes within the same hospital admission. [[[[[[[[[[[[[[[To focus our analysis, we decided to analyze the first ICU stay when there were multiple ICU stays ?????????]]]]]]]]]]]]]]]
+
+As we continued our analysis, we also wondered whether we should incorporate current scores that we aim to compare against in our model. In the end, we decided that these were acceptable to incorporate considering that these readings are automatically calculated for patients in the ICU and more importantly, these scores provided an effective proxy in helping us understand the nuance of clinical values in the absence of additional clinical expertise. If this model were to be implemented in the future, it would be important to incorporate some of the scores and buckets created in different scoring methods to accurately convey information on how 'good' or 'bad' certain values are. 
 
 In the course of our analysis, one of the greatest challenges we faced was thinking about how we would deal with missing data. While we did initially consider looking at various imputation methods, we decided to develop a parsimonious model with reasonable accuracy given the variety of challenges of imputation in a clinical setting after consulting various clinicians and given the time frame of the project.  
 
@@ -39,22 +41,33 @@ In the course of our analysis, one of the greatest challenges we faced was think
 For our Collaborative Data Science in Medicine class, the MIMIC database was hosted in Google Bigquery. We developed sql queries and then combined the dataframe into a temporary folder provisioned in bigquery, from which we imported the data into R with a connection. As we cannot provide account access and for the sake of reproducibility, we placed an extract of the query result in an Rda file to analyze going forward. 
 
 # Exploratory Analysis: 
+###What visualizations did you use to look at your data in different ways? What are the different statistical methods you considered? Justify the decisions you made, and show any major changes to your ideas. How did you reach these conclusions?
 
-What visualizations did you use to look at your data in different ways? What are the different statistical methods you considered? Justify the decisions you made, and show any major changes to your ideas. How did you reach these conclusions?
-
-
+We first used a variety of exploratory plots, including histograms and barplots to understand the distribution of our data to identify outliers, missing data and the shape of distributions to potentially inform further methods. At our core, our research question is a classification problem, so we decided to use logistic regression along with tree based methods, including first a simple decision tree, then a random forest and a gradient boosted tree.  
 
 # Final Analysis: What did you learn about the data? How did you answer the questions? How can you justify your answers?
+
+We learned that we are able to develop a reasonable estimate with just first day readings in the ICU, but need to incorporate additional complexity in order to effectively implement this algorithm in a clinical setting. [WRITE SOMETHING ABOUT HOW WE THOUGHT ABOUT TYPE I VS TYPE II ERROR]. As mentioned at the beginning, we sought to develop a decision support tool, and believe that our algorithm could be used to help clinicians better understand a patient's future prognosis. [COMPARED TO PREVIOUS OR CURRENTLY USED SCORES]. 
+
 ```{r}
 df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
 load('../data/cohort_1204.Rda')
+
+#mat's file path
+#FIGURE OUT IF THERE's A WAY TO DYNAMICALLY GENERATE PATH BASED ON GIT.. worst case we can use a dropbox 
+#load('C:/Users/Samuel/Documents/fall18/260/finalproj1213/bst260/data/cohort_1204.Rda')
 names(hds)
 ```
 
 First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. 
 
 ```{r}
-hds<- hds %>% filter (age>=18)
+#dumb formatting errors, debug later, says it doesn't recognize parenthesis.....
+hds<- hds %>% filter (age>=18) %>% mutate(ageoriginal = age,
+                                          age = ifelse(age>89, 92, age),
+                                          age_scoreoriginal = age_score,
+                                          age_score = ifelse(age_score==7, 12, age_score)
+#do we need to exclude multiple icu stays within one admission? does this matter? 
 ```
 
 This is the distribution of age now: 
