@@ -13,6 +13,8 @@ library(caTools)
 library(caret)
 library(tidyverse)
 library(lubridate)
+library(Amelia) 
+library(stringr)
 ```
 
 # Overview and Motivation:
@@ -57,7 +59,6 @@ load('../data/hds_1213.Rda')
 #mat's file path
 #FIGURE OUT IF THERE's A WAY TO DYNAMICALLY GENERATE PATH BASED ON GIT.. worst case we can use a dropbox 
 #load('C:/Users/Samuel/Documents/fall18/260/finalproj1213/bst260/data/cohort_1204.Rda')
-names(hds)
 hds<-hds %>% unique() # make sure we dont have duplicates 
 ```
 
@@ -80,19 +81,52 @@ subset_hds<- hds %>% select(subject_id, hadm_id, icustay_id, intime, outtime) %>
 
 hds<-left_join(hds, subset_hds)
 ```
-str(hds$intime)
 
+Remove people with missing gender
+```{r}
+hds<-hds %>% filter(!is.na(gender))
+```
 
-First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. 
+Remove all the columns with more than 20% of missing values 
+```{r}
+threshold <- nrow(hds)*0.20
+hds <- hds[colSums(is.na(hds)) < threshold]
+```
+
+remove patients who have missing values for the rest of the columns 
+```{r}
+hds <- hds[rowSums(is.na(hds)) < 1,]
+```
+
+First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. We also dummify gender and remove people with missing gender. These are errors. 
 
 ```{r}
-#dumb formatting errors, debug later, says it doesn't recognize parenthesis.....
-hds<- hds %>% filter (age>=18) %>% mutate(ageoriginal = age,
-                                          age = ifelse(age>89, 92, age),
-                                          age_scoreoriginal = age_score,
-                                          age_score = ifelse(age_score==7, 12, age_score)
-#do we need to exclude multiple icu stays within one admission? does this matter? 
+hds <- hds %>% filter(age>=18) %>% 
+  filter(gender)
+  mutate(age = ifelse(age>89, 92, age),
+         gender=str
+         gender=ifelse(gender=='"F"', 1,0)) ## female is 1
 ```
+
+
+Pre-processing categorical variable into 0vs1 columns and making dummies:
+```{r}
+hds<-hds %>% 
+  mutate(gender=ifelse(gender=='"F"', 1,0),# 1 is female and 0 is male
+         first_icu_stay=ifelse(first_icu_stay==FALSE,0,1),
+         v=1, # needed to make dummies 
+         admission_type=paste("AdmissionType",admission_type,sep="_")) %>% 
+  mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1)) %>%
+  spread(admission_type, v, fill = 0) %>%
+  filter(age>17) %>% ## leave only adults 
+  unique() %>% ## unique entries 
+  mutate(urineoutput=abs(urineoutput)) %>% ## we have negative values. I change them to positive
+  
+```
+
+
+
+
 
 This is the distribution of age now: 
 
