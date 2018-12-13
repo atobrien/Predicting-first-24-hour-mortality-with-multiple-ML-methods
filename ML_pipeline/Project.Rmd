@@ -12,6 +12,9 @@ library(dplyr)
 library(caTools)
 library(caret)
 library(tidyverse)
+library(lubridate)
+library(Amelia) 
+library(stringr)
 ```
 
 # Overview and Motivation:
@@ -50,25 +53,80 @@ We first used a variety of exploratory plots, including histograms and barplots 
 We learned that we are able to develop a reasonable estimate with just first day readings in the ICU, but need to incorporate additional complexity in order to effectively implement this algorithm in a clinical setting. [WRITE SOMETHING ABOUT HOW WE THOUGHT ABOUT TYPE I VS TYPE II ERROR]. As mentioned at the beginning, we sought to develop a decision support tool, and believe that our algorithm could be used to help clinicians better understand a patient's future prognosis. [COMPARED TO PREVIOUS OR CURRENTLY USED SCORES]. 
 
 ```{r}
-df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
-load('../data/cohort_1204.Rda')
+##df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
+load('../data/hds_1213.Rda')
 
 #mat's file path
 #FIGURE OUT IF THERE's A WAY TO DYNAMICALLY GENERATE PATH BASED ON GIT.. worst case we can use a dropbox 
 #load('C:/Users/Samuel/Documents/fall18/260/finalproj1213/bst260/data/cohort_1204.Rda')
-names(hds)
+hds<-hds %>% unique() # make sure we dont have duplicates 
 ```
 
-First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. 
+time since last ICU admission (taking 1/number of days since the last icu stay. People who are in the ICU for the first time will get 0)
+We also remove patients with missing values for intime and outtime, because their ICU stay might just be an entry error.
 
 ```{r}
-#dumb formatting errors, debug later, says it doesn't recognize parenthesis.....
-hds<- hds %>% filter (age>=18) %>% mutate(ageoriginal = age,
-                                          age = ifelse(age>89, 92, age),
-                                          age_scoreoriginal = age_score,
-                                          age_score = ifelse(age_score==7, 12, age_score)
-#do we need to exclude multiple icu stays within one admission? does this matter? 
+subset_hds<- hds %>% select(subject_id, hadm_id, icustay_id, intime, outtime) %>%
+  arrange(subject_id, intime) %>% 
+  group_by(subject_id) %>% 
+  mutate(lag=lag(intime, 1)) %>%
+  mutate(difftime=difftime(intime, lag, units="days")) %>%
+  mutate(difftime=1/as.numeric(difftime)) %>%
+  mutate(difftime=ifelse(is.na(difftime),0,difftime)) %>%
+  mutate(isnaintime=ifelse(is.na(intime), 1, 0)) %>%
+  mutate(max=max(isnaintime))%>%
+  filter(max!=1)%>%
+  select(-c(subject_id, icustay_id, difftime))%>%
+  ungroup()
+  
+
+hds2<-left_join(hds, subset_hds)
 ```
+
+Remove people with missing gender
+```{r}
+hds2<-hds2 %>% filter(!is.na(gender))
+```
+
+Remove all the columns with more than 20% of missing values 
+```{r}
+threshold <- nrow(hds)*0.20
+hds <- hds[colSums(is.na(hds)) < threshold]
+```
+
+remove patients who have missing values for the rest of the columns 
+```{r}
+hds <- hds[rowSums(is.na(hds)) < 1,]
+```
+
+First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. We also dummify gender and remove people with missing gender. These are errors. 
+
+```{r}
+hds <- hds %>% filter(age>=18) %>% 
+  filter(is.nagender)
+  mutate(age = ifelse(age>89, 92, age),
+         gender=ifelse(gender=="F", 1,0)) ## female is 1
+```
+
+
+Pre-processing categorical variable into 0vs1 columns and making dummies:
+```{r}
+hds<-hds %>% 
+  mutate(gender=ifelse(gender=='"F"', 1,0),# 1 is female and 0 is male
+         first_icu_stay=ifelse(first_icu_stay==FALSE,0,1),
+         v=1, # needed to make dummies 
+         admission_type=paste("AdmissionType",admission_type,sep="_")) %>% 
+  mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1)) %>%
+  spread(admission_type, v, fill = 0) %>%
+  filter(age>17) %>% ## leave only adults 
+  unique() %>% ## unique entries 
+  mutate(urineoutput=abs(urineoutput)) %>% ## we have negative values. I change them to positive
+  
+```
+
+
+
+
 
 This is the distribution of age now: 
 
