@@ -1,0 +1,83 @@
+---
+title: "Gradient_boost_bst260"
+author: "Anthony O'Brien"
+date: "December 12, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# To get h20
+# > install.packages("h2o")
+# > library(h2o)
+# > localH2O = h2o.init()
+```
+
+
+```{r}
+# Import the libraries
+library(dplyr)
+library(caTools)
+library(caret)
+library(xgboost)
+#library(h20)
+
+# Import the data
+df_log<-read.csv("C:/Users/Me/Desktop/cohort_preprocessed.csv")
+
+# Select only unique ICU stays
+df_icu<-df_log %>% 
+  filter(first_icu_stay==1)
+
+# Split the dataset into Training set, and counter set. 
+set.seed(1985)
+split = sample.split(df_icu$icustay_expire_flag, SplitRatio = 0.80)
+training_set <- subset(df_icu, split == TRUE)
+test_set <- subset(df_icu, split == FALSE)
+
+# Clean global environment objects
+rm(df_icu) 
+rm(df_log)
+rm(split)
+
+# Create a last column titled outcome, place categorical variables at end drop unwanted columns
+
+training_set <- training_set %>% 
+  mutate(intubated=mechvent,sex=gender, outcome=icustay_expire_flag) %>%
+  select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
+            meanbp_score, resprate_score, temp_score, UrineOutput_score, 
+            mechvent_score, mechvent, electivesurgery, electivesurgery_score,
+            first_icu_stay, gender, age, icustay_id, X))
+
+test_set <- test_set %>% 
+  mutate(intubated=mechvent,sex=gender, outcome=icustay_expire_flag) %>%
+  select(-c(icustay_expire_flag, age_score, preiculos_score, heartrate_score,
+            meanbp_score, resprate_score, temp_score, UrineOutput_score, 
+            mechvent_score, mechvent, electivesurgery, electivesurgery_score,
+            first_icu_stay, gender, age, icustay_id, X))
+
+# Fitting XGBoost to Training set
+classifier = xgboost(data = as.matrix(training_set[-51]), label = training_set$outcome, nrounds = 10)
+
+
+# Evaluating model performance with K-fold cross validation
+folds = createFolds(training_set$outcome, k = 10)
+cv = lapply(folds, function(x) {
+  training_fold = training_set[-x, ]
+  test_fold = training_set[x, ]
+  classifier = xgboost(data = as.matrix(training_set[-51]), label = training_set$outcome, nrounds = 10)
+  y_pred = predict(classifier, newdata = as.matrix(test_fold[-51]))
+  y_pred= (y_pred >= 0.5)
+  cm = table(test_fold[, 51], y_pred)
+  accuracy = (cm[1,1] + cm[2,2]) / (cm[1,1] + cm[2,2] + cm[1,2] + cm[2,1])
+  return(accuracy)
+})
+accuracy = mean(as.numeric(cv))
+
+
+
+```
+
