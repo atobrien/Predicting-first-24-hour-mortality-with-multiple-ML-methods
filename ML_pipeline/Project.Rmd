@@ -1,0 +1,84 @@
+---
+title: "Project - Predicting Mortality in ICU Patients"
+author: "Maja Garbulinska"
+date: "12/12/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(caTools)
+library(caret)
+library(tidyverse)
+```
+
+# Overview and Motivation:
+
+Provide an overview of the project goals and the motivation for it. Consider that this will be read by people who did not see your project proposal
+
+# Related Work: 
+
+Anything that inspired you, such as a paper, a web site, or something we discussed in class
+
+# Initial Questions: 
+
+What questions are you trying to answer? How did these questions evolve over the course of the project? What new questions did you consider in the course of your analysis?
+
+# Data: 
+
+Source, scraping method, cleanup, etc
+
+# Exploratory Analysis: 
+
+What visualizations did you use to look at your data in different ways? What are the different statistical methods you considered? Justify the decisions you made, and show any major changes to your ideas. How did you reach these conclusions?
+
+# Final Analysis: What did you learn about the data? How did you answer the questions? How can you justify your answers?
+```{r}
+df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
+load('../data/cohort_1204.Rda')
+names(hds)
+```
+
+First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. 
+
+```{r}
+hds<- hds %>% filter (age>=18)
+```
+
+This is the distribution of age now: 
+
+```{r}
+plot1<- ggplot()+
+  geom_histogram(aes(x=age), data=hds, colour="grey")+
+  theme_bw()+
+  ggtitle("Age distribution")
+plot1
+```
+
+```{r}
+plot2<- ggplot()+
+  geom_histogram(aes(x=as.character(age_score)), data=hds, colour="grey", stat="count")+
+  theme_bw()+
+  ggtitle("Age distribution")+
+  xlab("Age score")
+plot2
+```
+
+Older individuals above 90 are assigned to 7, for a more logical interpretation we assign these individuals to 12 to more accurately reflect the demographics. 
+
+```{r}
+hds<- hds %>%
+  mutate(age_score=ifelse(age_score==7,12,age_score)) 
+
+
+plot3<-hds %>%
+  ggplot()+
+  geom_histogram(aes(x=as.factor(age_score)), data=hds, colour="grey", stat="count")+
+  theme_bw()+
+  ggtitle("Age distribution")+
+  xlab("Age score")
+plot3
+```
+

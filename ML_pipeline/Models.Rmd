@@ -53,6 +53,7 @@ data<-bind_rows(positive, negativefinal)
 
 Split into 80/20 train/test
 ```{r}
+data <- data %>% select(-c(los_icu,los_hospital, preiculos ))
 set.seed(7)
 trainIndex<- createDataPartition(data$icustay_expire_flag, p=.8, list=F, times=1)
 TrainSet<-data[trainIndex,]
@@ -64,6 +65,7 @@ Make the outcome variable appropriate for the caret package
 ```{r}
 TrainSet$icustay_expire_flag<- as.factor(TrainSet$icustay_expire_flag)
 levels(TrainSet$icustay_expire_flag) <- c("X0", "X1")
+
 TestSet$icustay_expire_flag<- as.factor(TestSet$icustay_expire_flag)
 levels(TestSet$icustay_expire_flag) <- c("X0", "X1")
 ```
