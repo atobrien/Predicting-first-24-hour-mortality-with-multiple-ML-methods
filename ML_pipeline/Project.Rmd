@@ -1,6 +1,6 @@
 ---
 title: "Project - Predicting Mortality in ICU Patients"
-author: "Maja Garbulinska"
+author: "Lucie Gillet, Maja Garbulinska, Anthony O'Brien, Mathew Samuel"
 date: "12/12/2018"
 output: html_document
 ---
@@ -15,24 +15,34 @@ library(tidyverse)
 ```
 
 # Overview and Motivation:
+###Provide an overview of the project goals and the motivation for it. Consider that this will be read by people who did not see your project proposal
 
-Provide an overview of the project goals and the motivation for it. Consider that this will be read by people who did not see your project proposal
+With the proliferation of data, there continues to be a shift towards data-driven decision making, especially in the world of healthcare. The ICU represents a particularly interesting opportunity given the numerous data elements collected on patients to monitor their health at this critical juncture in their health. Currently, there are a variety of risk prediction scores that clinicians are able to utilize to gain some insight into the overall health of their patient in the aggregate. 
+
+For our project, we wanted to see if we could take advantage of the many data points collected and develop a mortality prediction model based on a patient's first day in the ICU, which remains a particularly important period in their hospital admission. Such a model would provide physicians with a data-driven, standardized approach to assess the overall health of their patient and also potentially inform clinical decision-making moving forward. For instance, though it may be heuristically clear at times which patients might need increased supervision, a robust and standardized score would provide for a systematic, process-driven method to help hospitals allocate resources on patients that require the most attention. 
 
 # Related Work: 
+###Anything that inspired you, such as a paper, a web site, or something we discussed in class
 
-Anything that inspired you, such as a paper, a web site, or something we discussed in class
+We were inspired by a paper written by our MIT course faculty on [Real-time mortality prediction in the Intensive Care Unit](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5977709/). We wanted to tackle a relevant and feasible problem given the scope of the class, so decided to modify the task to develop a mortality prediction based on first day measurements. 
 
 # Initial Questions: 
+###What questions are you trying to answer? How did these questions evolve over the course of the project? What new questions did you consider in the course of your analysis?
 
-What questions are you trying to answer? How did these questions evolve over the course of the project? What new questions did you consider in the course of your analysis?
+The main question we are trying to answer is as follows: can we accurately predict a patient's in-hospital mortality based on their first-day readings in the ICU? Over the course of our project, we also wondered if we could understand the impact of the first 24 hours in the ICU on longer-term patient mortality, though it's clear that as more time passes from the initial ICU stay to the time of death, there could be additional factors to take into account, a number of which do not have corresponding data. After working with the data, we also faced the challenge of dealing with patients who were admitted to the ICU at multiple time points, sometimes within the same hospital admission. To focus our analysis, we decided to analyze
+
+In the course of our analysis, one of the greatest challenges we faced was thinking about how we would deal with missing data. While we did initially consider looking at various imputation methods, we decided to develop a parsimonious model with reasonable accuracy given the variety of challenges of imputation in a clinical setting after consulting various clinicians and given the time frame of the project.  
 
 # Data: 
+##Source, scraping method, cleanup, etc
 
-Source, scraping method, cleanup, etc
+For our Collaborative Data Science in Medicine class, the MIMIC database was hosted in Google Bigquery. We developed sql queries and then combined the dataframe into a temporary folder provisioned in bigquery, from which we imported the data into R with a connection. As we cannot provide account access and for the sake of reproducibility, we placed an extract of the query result in an Rda file to analyze going forward. 
 
 # Exploratory Analysis: 
 
 What visualizations did you use to look at your data in different ways? What are the different statistical methods you considered? Justify the decisions you made, and show any major changes to your ideas. How did you reach these conclusions?
+
+
 
 # Final Analysis: What did you learn about the data? How did you answer the questions? How can you justify your answers?
 ```{r}
