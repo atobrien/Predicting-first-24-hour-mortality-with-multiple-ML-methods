@@ -711,18 +711,20 @@ group by subject_id, hadm_id, icustay_id
       `physionet-data.mimiciii_derived.icustay_detail` id
       )
       
-
+--aggregated pull of data
 SELECT *
 FROM labs
 
 LEFT JOIN oasis 
 USING (subject_id, hadm_id, icustay_id)
+
 LEFT JOIN a 
 USING (subject_id, hadm_id, icustay_id)
+
 LEFT JOIN v
 USING (subject_id, hadm_id, icustay_id)
---JOIN g
---USING (subject_id, hadm_id, icustay_id)
+--join in the different bloodgas values from different sources 
+
 LEFT JOIN g_1
 USING (subject_id, hadm_id, icustay_id)
 LEFT JOIN g_2
@@ -733,5 +735,6 @@ LEFT JOIN g_4
 USING (subject_id, hadm_id, icustay_id)
 LEFT JOIN g_5
 USING (subject_id, hadm_id, icustay_id)
+
 LEFT JOIN detail
 USING (subject_id, hadm_id, icustay_id)
