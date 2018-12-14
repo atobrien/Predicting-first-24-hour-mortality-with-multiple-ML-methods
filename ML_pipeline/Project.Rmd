@@ -111,11 +111,23 @@ hds <- hds %>% filter(age>=18) %>%
          gender=ifelse(gender=="F", 1,0)) ## female is 1
 ```
 
+This is the distribution of age now: 
+
+```{r}
+plot1<- ggplot()+
+  geom_histogram(aes(x=age), data=hds, colour="grey")+
+  theme_bw()+
+  ggtitle("Age distribution after imputation")+
+  theme(plot.title = element_text(hjust = 0.5))
+plot1
+# paths <- stringr::str_c("AgeDistribution",names(plot1), ".jpg")
+# pwalk(list(paths, plot), ggsave, path = '../graphs')
+```
 
 Pre-processing categorical variable into 0vs1 columns and making dummies:
 ```{r}
 hds<-hds %>% 
-  mutate(gender=ifelse(gender=='"F"', 1,0),# 1 is female and 0 is male
+  mutate(gender=ifelse(gender=='F', 1,0),# 1 is female and 0 is male
          first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
 # hds
 ```
@@ -157,23 +169,46 @@ col_to_standardize <- colnames(hds)[!colnames(hds) %in% c(not_to_standardize,"ic
 ```
 
 
-
-
-
-
-
-This is the distribution of age now: 
+Standardize data except icustay_id and icustay_expire_flag (target) and categorical features:
+```{r}
+library(caret)
+preprocessParams <- preProcess(hds[,col_to_standardize], method=c("center", "scale"))
+transformed <- predict(preprocessParams, hds[,col_to_standardize])
+# transformed %>% head()
+final <- cbind(transformed, hds[,not_to_standardize])
+colnames(final) <- c(colnames(transformed),not_to_standardize)
+final %>% head()
+```
 
 ```{r}
-plot1<- ggplot()+
-  geom_histogram(aes(x=age), data=hds, colour="grey")+
-  theme_bw()+
-  ggtitle("Age distribution after imputation")+
-  theme(plot.title = element_text(hjust = 0.5))
-plot1
-# paths <- stringr::str_c("AgeDistribution",names(plot1), ".jpg")
-# pwalk(list(paths, plot), ggsave, path = '../graphs')
+library(FactoMineR)
+res.pca = PCA(final[,1:62], scale.unit=TRUE, ncp=5, graph=T)
 ```
+
+Data split:
+```{r}
+final[,"icustay_expire_flag"] <- factor(final[,"icustay_expire_flag"])
+trainIndex <- createDataPartition(final$icustay_expire_flag, p=0.80, list=FALSE)
+dataTrain <- final[ trainIndex,]
+dataTest <- final[-trainIndex,]
+
+final
+```
+
+Naive Bayes Classifier:
+```{r}
+library(klaR)
+# train a naive Bayes model
+fit <- NaiveBayes(icustay_expire_flag~., data=dataTrain)
+# make predictions
+predictions <- predict(fit, dataTest[,1:62])
+# summarize results
+confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
+```
+
+
+
+
 
 ```{r}
 plot2<- ggplot()+
