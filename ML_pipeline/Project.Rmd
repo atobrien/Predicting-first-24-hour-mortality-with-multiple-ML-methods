@@ -7,14 +7,19 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+library(klaR) ## masks select from dplyr
 library(dplyr)
 library(caTools)
-library(caret)
+library(caret) ## ML
 library(tidyverse)
-library(lubridate)
-library(Amelia) 
-library(stringr)
+library(lubridate) ## dates
+library(Amelia) ## missing values
+library(stringr) ## string processing
+library(FactoMineR)
+```
+
+```{r}
+select <- dplyr::select ## klaR masking dplyr select 
 ```
 
 # Overview and Motivation:
@@ -69,23 +74,24 @@ We also remove patients with missing values for intime and outtime, because thei
 
 ```{r}
 subset_hds<- hds %>% select(subject_id, hadm_id, icustay_id, intime, outtime) %>%
-  arrange(subject_id, intime) %>% 
+  arrange(subject_id, intime) %>%  ## make sure that data are arrange correctly
   group_by(subject_id) %>% 
-  mutate(lag=lag(intime, 1)) %>%
-  mutate(difftime=difftime(intime, lag, units="days")) %>%
-  mutate(difftime=1/as.numeric(difftime)) %>%
-  mutate(difftime=ifelse(is.na(difftime),0,difftime)) %>%
-  mutate(isnaintime=ifelse(is.na(intime), 1, 0)) %>%
-  mutate(max=max(isnaintime))%>%
-  filter(max!=1)%>%
-  select(subject_id, icustay_id, difftime)%>%
+  mutate(lag=lag(intime, 1),
+         difftime=difftime(intime, lag, units="days"),
+         difftime=1/as.numeric(difftime),
+         difftime=ifelse(is.na(difftime),0,difftime),
+         isnaintime=ifelse(is.na(intime), 1, 0),
+         max=max(isnaintime))%>%
+  filter(max!=1) %>%
+  select(subject_id, icustay_id, difftime) %>%
   ungroup()
   
 
-hds2<-left_join(hds, subset_hds)
+hds2<-left_join(hds, subset_hds) ## merge/join with the whole dataset
+rm(subset_hds) ## remove this dataframe, we dont need it anymore 
 ```
 
-Remove people with missing gender
+Remove people with missing gender. 
 ```{r}
 hds2<-hds2 %>% filter(!is.na(gender))
 ```
@@ -94,7 +100,6 @@ Remove all the columns with more than 20% of missing values
 ```{r}
 threshold <- nrow(hds)*0.20
 hds <- hds2[colSums(is.na(hds2)) < threshold]
-
 ```
 
 Remove patients who have missing values for the rest of the columns 
@@ -102,87 +107,132 @@ Remove patients who have missing values for the rest of the columns
 hds <- hds[rowSums(is.na(hds)) < 1,]
 ```
 
-First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. We also dummify gender and remove people with missing gender. These are errors. 
+First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. We also dummify gender.
 
 ```{r}
 hds <- hds %>% filter(age>=18) %>% 
-  filter(!is.na(gender)) %>% 
   mutate(age = ifelse(age>89, 92, age),
          gender=ifelse(gender=="F", 1,0)) ## female is 1
 ```
 
-This is the distribution of age now: 
-
+We can see the age distribution now
 ```{r}
-plot1<- ggplot()+
-  geom_histogram(aes(x=age), data=hds, colour="grey")+
+ggplot(aes(x=age), data=hds)+
+  geom_histogram( colour="grey",binwidth = 1)+
   theme_bw()+
   ggtitle("Age distribution after imputation")+
-  theme(plot.title = element_text(hjust = 0.5))
-plot1
-# paths <- stringr::str_c("AgeDistribution",names(plot1), ".jpg")
-# pwalk(list(paths, plot), ggsave, path = '../graphs')
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1,100,5))
+```
+
+Gender distribution - 44 % are females
+```{r}
+summary(hds$gender) 
+```
+
+Let's see how many people die in the ICU - only around 8% 
+```{r}
+summary(hds$icustay_expire_flag) ## this is our outcome variable 
+```
+
+We can see that some of the urine output entry are negative. After consulting this issue with domain experts, we recode these values to positive. 
+```{r}
+summary(hds$urineoutput)
+```
+
+Urine output distribution
+```{r}
+ggplot(aes(x=urineoutput), data=hds)+
+  geom_histogram( colour="grey",binwidth = 100)+
+  theme_bw()+
+  ggtitle("Urine output distribution after cleaning")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(limits=c(1,6000)) ## there are some crazy values later 
+```
+
+
+```{r}
+hds<-hds %>% mutate(urineoutput=abs(urineoutput))%>%
+  filter(urineoutput<6001) ## urine output cant be more than this. We dont know if more is actually mistake
+## since we have many patients we can eliminate these people
 ```
 
 Pre-processing categorical variable into 0vs1 columns and making dummies:
 ```{r}
-hds<-hds %>% 
-  mutate(gender=ifelse(gender=='F', 1,0),# 1 is female and 0 is male
-         first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
-# hds
+hds<-hds %>% mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
 ```
 
 Dummies
 ```{r}
 hds<-hds %>% mutate(v=1,
-            admission_type=paste("AdmissionType",admission_type,sep="_"),
-            admission_location=paste("AdmissionLocation",admission_type,sep="_"))
+                    admission_type=paste("AdmissionType",admission_type,sep="_"),
+                    admission_location=paste("AdmissionLocation",admission_location,sep="_"))
 
 hds3<-hds %>% 
   select(icustay_id, v, admission_type, admission_location) %>%
   spread(admission_type, v, fill = 0) %>%
   mutate(v=1)%>%
   spread(admission_location, v, fill = 0)
-
-hds<-left_join(hds3, hds)%>%
-  select(-c(admission_type, admission_location))
   
 ```
 
-
-
+Check these variables. We can see that some of the have a very small variablity. The is not many ones. We delete this columns. 
 ```{r}
-# features to delete
-to_delete <- c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id","admittime","religion","insurance","dischtime","ethnicity","admission_location","diagnosis","hospital_expire_flag","ICUSTAY_AGE_GROUP")
+summary(hds3)
 ```
 
-#### need to account for different admission locations - they should not be standardized 
+```{r}
+Nzv<- nearZeroVar(hds3, saveMetrics = TRUE) ## this is a caret function
+Nzv<-Nzv[Nzv[,"zeroVar"] + Nzv[,"nzv"] > 0, ]
+NzvNames<-rownames(Nzv)
+NzvNames
+```
 
 ```{r}
-hds <- hds[,!colnames(hds) %in% to_delete]
+hds3 <- hds3[!(names(hds3) %in% NzvNames)]
 
+hds<-left_join(hds3, hds)%>%
+  select(-c(admission_type, admission_location, v))
+```
+
+features to delete
+```{r}
+hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id",
+                         "admittime","religion","insurance","dischtime","ethnicity","diagnosis",
+                         "hospital_expire_flag","ICUSTAY_AGE_GROUP"))
+
+```
+
+```{r}
 # features that we don't want to standardize
 # we keep icustay_expire_flag because it is the target to predict
-not_to_standardize <- c("gender","first_icu_stay","AdmissionType_ELECTIVE","AdmissionType_EMERGENCY","AdmissionType_URGENT","icustay_expire_flag")
 
-col_to_standardize <- colnames(hds)[!colnames(hds) %in% c(not_to_standardize,"icustay_id")]
+not_to_standardize <- hds %>% 
+  select(gender, first_icu_stay, AdmissionType_ELECTIVE:`AdmissionLocation_TRANSFER FROM HOSP/EXTRAM`, 
+         icustay_expire_flag)
+
+# features to standardize
+col_to_standardize <- hds %>% 
+  select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:`AdmissionLocation_TRANSFER FROM HOSP/EXTRAM`,
+            icustay_expire_flag))
 ```
 
 
 Standardize data except icustay_id and icustay_expire_flag (target) and categorical features:
 ```{r}
-library(caret)
-preprocessParams <- preProcess(hds[,col_to_standardize], method=c("center", "scale"))
-transformed <- predict(preprocessParams, hds[,col_to_standardize])
-# transformed %>% head()
-final <- cbind(transformed, hds[,not_to_standardize])
-colnames(final) <- c(colnames(transformed),not_to_standardize)
-final %>% head()
+preprocessParams <- preProcess(col_to_standardize, method=c("center", "scale"))
+transformed <- predict(preprocessParams, col_to_standardize)
+final <- cbind(transformed, not_to_standardize) %>% 
+  select (icustay_expire_flag, everything()) ## class variable first
 ```
 
+
+PCA
 ```{r}
-library(FactoMineR)
-res.pca = PCA(final[,1:62], scale.unit=TRUE, ncp=5, graph=T)
+res.pca = PCA(final[,2:length(final)], scale.unit=TRUE, ncp=5, graph=T)
+```
+```{r}
+summary(res.pca)
 ```
 
 Data split:
@@ -191,7 +241,6 @@ final[,"icustay_expire_flag"] <- factor(final[,"icustay_expire_flag"])
 trainIndex <- createDataPartition(final$icustay_expire_flag, p=0.80, list=FALSE)
 dataTrain <- final[ trainIndex,]
 dataTest <- final[-trainIndex,]
-
 final
 ```
 
@@ -201,40 +250,23 @@ library(klaR)
 # train a naive Bayes model
 fit <- NaiveBayes(icustay_expire_flag~., data=dataTrain)
 # make predictions
-predictions <- predict(fit, dataTest[,1:62])
+predictions <- predict(fit, dataTest[,2:length(dataTest)])
 # summarize results
 confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
 ```
 
 
 
-
-
+More models: 
 ```{r}
-plot2<- ggplot()+
-  geom_histogram(aes(x=as.character(age_score)), data=hds, colour="grey", stat="count")+
-  theme_bw()+
-  ggtitle("Age distribution")+
-  xlab("Age score")+
-  theme(plot.title = element_text(hjust = 0.5))
-plot2
+set.seed(262)
+up_train <- upSample(x = dataTrain[, -ncol(dataTrain)],
+                     y = dataTrain$icustay_expire_flag)                         
+table(up_train$Class)
+
 ```
-
-Older individuals above 90 are assigned to 7, for a more logical interpretation we assign these individuals to 12 to more accurately reflect the demographics. 
-
 ```{r}
-hds<- hds %>%
-  mutate(age_score=ifelse(age_score==7,12,age_score)) 
 
-
-plot3<-hds %>%
-  ggplot()+
-  geom_histogram(aes(x=as.factor(age_score)), data=hds, colour="grey", stat="count")+
-  theme_bw()+
-  ggtitle("Age distribution")+
-  xlab("Age score")
-plot3
 ```
-
 
 
