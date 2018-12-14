@@ -1,0 +1,57 @@
+---
+title: "feature_exploration_hds"
+output: html_document
+---
+
+```{r}
+# exploration of hds data
+load('../data/hds_1213.Rda')
+library(dplyr)
+hds %>% dim()
+library(Amelia)
+# missmap(hds)
+```
+```{r}
+hds %>% head()
+```
+```{r}
+str(hds)
+```
+```{r}
+library(Amelia)
+missmap(hds)
+```
+
+We can start working with columns that have less than 20% of missing data:
+
+With threshold 30:
+```{r}
+threshold3 <- nrow(hds)*0.30
+df2_t30 <- hds[colSums(is.na(hds)) < threshold3]
+df3_t30 <- df2_t30[rowSums(is.na(df2_t30)) < 1,]
+df3_t30 %>% dim()
+# missmap(df2)
+```
+
+With threshold 20:
+```{r}
+threshold2 <- nrow(hds)*0.20
+df2_t20 <- hds[colSums(is.na(hds)) < threshold2]
+df3_t20 <- df2_t20[rowSums(is.na(df2_t20)) < 1,]
+df3_t20 %>% dim()
+# missmap(df2)
+```
+
+Check the columns that are not in the dataset anymore using the threshold 20 instead in 30:
+```{r}
+for (coln in colnames(df3_t30)){
+  if (!coln %in% colnames(df3_t20)){
+    print(coln)
+  }
+}
+```
+
+```{r}
+hds %>% dim()
+```
+

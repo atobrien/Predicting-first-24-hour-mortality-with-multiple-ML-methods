@@ -55,14 +55,16 @@ We learned that we are able to develop a reasonable estimate with just first day
 ```{r}
 ##df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
 load('../data/hds_1213.Rda')
-
-#mat's file path
-#FIGURE OUT IF THERE's A WAY TO DYNAMICALLY GENERATE PATH BASED ON GIT.. worst case we can use a dropbox 
-#load('C:/Users/Samuel/Documents/fall18/260/finalproj1213/bst260/data/cohort_1204.Rda')
 hds<-hds %>% unique() # make sure we dont have duplicates 
 ```
 
-time since last ICU admission (taking 1/number of days since the last icu stay. People who are in the ICU for the first time will get 0)
+Plot to obtain the missing values:
+```{r}
+# missmap(hds)
+```
+
+
+Time since last ICU admission (taking 1/number of days since the last icu stay. People who are in the ICU for the first time will get 0)
 We also remove patients with missing values for intime and outtime, because their ICU stay might just be an entry error.
 
 ```{r}
@@ -91,21 +93,24 @@ hds2<-hds2 %>% filter(!is.na(gender))
 Remove all the columns with more than 20% of missing values 
 ```{r}
 threshold <- nrow(hds)*0.20
-hds <- hds[colSums(is.na(hds)) < threshold]
+hds <- hds2[colSums(is.na(hds2)) < threshold]
+hds
 ```
 
-remove patients who have missing values for the rest of the columns 
+Remove patients who have missing values for the rest of the columns 
 ```{r}
 hds <- hds[rowSums(is.na(hds)) < 1,]
+hds
 ```
 
 First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. We also dummify gender and remove people with missing gender. These are errors. 
 
 ```{r}
 hds <- hds %>% filter(age>=18) %>% 
-  filter(is.nagender)
+  filter(!is.na(gender)) %>% 
   mutate(age = ifelse(age>89, 92, age),
          gender=ifelse(gender=="F", 1,0)) ## female is 1
+hds
 ```
 
 
@@ -120,22 +125,20 @@ hds<-hds %>%
   spread(admission_type, v, fill = 0) %>%
   filter(age>17) %>% ## leave only adults 
   unique() %>% ## unique entries 
-  mutate(urineoutput=abs(urineoutput)) %>% ## we have negative values. I change them to positive
-  
+  mutate(urineoutput=abs(urineoutput))## we have negative values. I change them to positive
+# hds
 ```
-
-
-
-
-
 This is the distribution of age now: 
 
 ```{r}
 plot1<- ggplot()+
   geom_histogram(aes(x=age), data=hds, colour="grey")+
   theme_bw()+
-  ggtitle("Age distribution")
+  ggtitle("Age distribution after imputation")+
+  theme(plot.title = element_text(hjust = 0.5))
 plot1
+# paths <- stringr::str_c("AgeDistribution",names(plot1), ".jpg")
+# pwalk(list(paths, plot), ggsave, path = '../graphs')
 ```
 
 ```{r}
@@ -143,7 +146,8 @@ plot2<- ggplot()+
   geom_histogram(aes(x=as.character(age_score)), data=hds, colour="grey", stat="count")+
   theme_bw()+
   ggtitle("Age distribution")+
-  xlab("Age score")
+  xlab("Age score")+
+  theme(plot.title = element_text(hjust = 0.5))
 plot2
 ```
 
@@ -162,4 +166,6 @@ plot3<-hds %>%
   xlab("Age score")
 plot3
 ```
+
+
 

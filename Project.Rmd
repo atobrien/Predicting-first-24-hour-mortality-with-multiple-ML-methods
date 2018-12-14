@@ -54,7 +54,7 @@ We learned that we are able to develop a reasonable estimate with just first day
 
 ```{r}
 ##df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
-load('../data/hds_1213.Rda')
+load('data/hds_1213.Rda')
 
 #mat's file path
 #FIGURE OUT IF THERE's A WAY TO DYNAMICALLY GENERATE PATH BASED ON GIT.. worst case we can use a dropbox 

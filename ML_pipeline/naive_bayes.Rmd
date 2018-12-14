@@ -5,31 +5,47 @@ output: html_document
 
 ```{r}
 library(dplyr)
-data <- read.csv("../data/cohort_preprocessed.csv")
-data <- data %>% select(-c(X))
-rownames(data) <- data$icustay_id
-data %>% head()
+# load('../data/hds_1213.Rda')
+# hds<-hds %>% unique()
+```
+
+```{r}
+# data %>% summary()
 ```
 
 ```{r}
 # imbalanced dataset : 8% of target ==1
-sum(data$icustay_expire_flag)/length(data$icustay_expire_flag)
+sum(hds$icustay_expire_flag)/length(hds$icustay_expire_flag)
 
 # columns to standardize
-col_to_standardize <- colnames(data)
-col_to_standardize <- col_to_standardize[!col_to_standardize %in% c("icustay_id","icustay_expire_flag")]
+col_to_standardize <- colnames(hds)
+col_to_standardize 
+# hds
+
+# features to delete
+to_delete <- c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id","admittime","religion","insurance","dischtime","ethnicity","admission_location","diagnosis","hospital_expire_flag","isnaintime","max","ICUSTAY_AGE_GROUP")
+
+hds <- hds[,!colnames(hds) %in% to_delete]
+
+# features that we don't want to standardize
+# we keep icustay_expire_flag because it is the target to predict
+not_to_standardize <- c("gender","first_icu_stay","AdmissionType_ELECTIVE","AdmissionType_EMERGENCY","AdmissionType_URGENT","icustay_expire_flag")
+
+col_to_standardize <- colnames(hds)[!colnames(hds) %in% c(not_to_standardize,"icustay_id")]
 col_to_standardize
+
+# hds
 ```
 
 
-Standardize data except icustay_id and icustay_expire_flag (target):
+Standardize data except icustay_id and icustay_expire_flag (target) and categorical features:
 ```{r}
 library(caret)
-preprocessParams <- preProcess(data[,col_to_standardize], method=c("center", "scale"))
-transformed <- predict(preprocessParams, data[,col_to_standardize])
+preprocessParams <- preProcess(hds[,col_to_standardize], method=c("center", "scale"))
+transformed <- predict(preprocessParams, hds[,col_to_standardize])
 # transformed %>% head()
-final <- cbind(transformed, data$icustay_expire_flag)
-colnames(final) <- c(colnames(transformed), "icustay_expire_flag")
+final <- cbind(transformed, hds[,not_to_standardize])
+colnames(final) <- c(colnames(transformed),not_to_standardize)
 final %>% head()
 ```
 
@@ -56,6 +72,14 @@ predictions <- predict(fit, dataTest[,1:62])
 # summarize results
 confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
 ```
+
+```{r}
+# Comparing with a random classifier
+N <- length(data$icustay_id)
+y_hat <- sample(c(0, 1), N, replace = TRUE)
+table(predicted = y_hat, actual = data$icustay_expire_flag)
+```
+
 
 Undersampling of class 0 because we have an imbalanced dataset:
 ```{r}
