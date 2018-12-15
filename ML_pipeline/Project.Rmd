@@ -208,13 +208,13 @@ hds<-hds %>%
                              ethnicity=="HISPANIC OR LATINO"~3, 
                              ethnicity=="HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)"~3, 
                              ethnicity=="MIDDLE EASTERN" ~4,  
-                             ethnicity=="NATIVE"~ 5, 
-                             ethnicity=="NATIVE FEDERALLY RECOGNIZED TRIBE" ~ 5,
-                             ethnicity=="NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 6,
-                             ethnicity=="NO_ANSWER"~ 7, 
-                             ethnicity=="OTHER"~ 8, 
-                             ethnicity=="PORTUGUESE"~9,
-                             ethnicity=="WHITE"~10)) %>%
+                             ethnicity=="NATIVE"~ 4, 
+                             ethnicity=="NATIVE FEDERALLY RECOGNIZED TRIBE" ~ 4,
+                             ethnicity=="NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 4,
+                             ethnicity=="NO_ANSWER"~ 6, 
+                             ethnicity=="OTHER"~ 4, 
+                             ethnicity=="PORTUGUESE"~4,
+                             ethnicity=="WHITE"~5)) %>%
   mutate(ethnicity=as.character(ethnicity))
 
 ```
@@ -524,11 +524,21 @@ hds %>% select(RespRate_Max) %>%
   count(RespRate_Max)
 ```
 
+After exploring the different lab values, we remove patients for which their values are implausible based on existing literature. More research will need to be done to reconcile these values, and 
+
+```{r}
+dim(hds %>% filter((ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8)))
+#there are 139 patients that have clinically hard to believe lab values
+
+hds <- hds %>% filter(!(ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8))
+```
+
+
 ## Deleted features
 ```{r}
 hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id",
                          "admittime","religion","insurance","dischtime","diagnosis",
-                         "hospital_expire_flag","ICUSTAY_AGE_GROUP"))
+                         "hospital_expire_flag","ICUSTAY_AGE_GROUP")) %>% add_column(Ethnicity_7 = ifelse(hds$Ethnicity_2+hds$Ethnicity_5+hds$Ethnicity_6==0,1,0), .after = "Ethnicity_6")
 
 ```
 
