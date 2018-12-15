@@ -1,0 +1,169 @@
+## Review of continuous clinical variables
+
+# ANIONGAP_min: Keep ANIONGAP_min as is, it appears normal
+summary(hds$ANIONGAP_min) 
+
+
+# ANIONGAP_max: Either cut off at 40 or leave as is
+#
+# References: 
+# 1. Grice, A.S. et al.Multiple acyl-CoA dehydrogenase deficiency: a rare cause of acidosis with an increased anion gap.British Journal of Anaesthesia , Volume 86 , Issue 3 , 437 - 441
+# 2. Bavakunji RV, Turner JD, Jujjavarapu S, et al. An unusual case of severe high anion gap metabolic acidosis. NDT Plus. 2011;4(2):90-2. 
+
+summary(hds$ANIONGAP_max) 
+hds %>% ggplot()+
+  geom_histogram(aes(ANIONGAP_max), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,59))
+
+# BICARBONATE_min: the MIN value in this is really low but possible. The max value is also possible. Keep as is.
+#
+# References: 
+# 1. Hiroyuki Arai et al. A Case of Poisoning by a Mixture of Methanol and Ethylene Glycol, The Tohoku Journal of Experimental Medicine, 1983, Volume 141, Issue 4, Pages 473-480, Released August 31, 2006, 
+# 2. Yessayan, L., Yee, J., Frinak, S., Kwon, D., & Szamosfalvi, B. (2015). Treatment of Severe Metabolic Alkalosis with Continuous Renal Replacement Therapy: Bicarbonate Kinetic Equations of Clinical Value. ASAIO journal, 61 4, e20-5.
+summary(hds$BICARBONATE_min)
+
+# BICARBONATE_max:keep as is
+#
+summary(hds$BICARBONATE_max)
+
+# CREATININE_min: keep as is
+#
+# References (pediatric but still applies given the max): 
+# 1. Vimal Master Sankar Raj, Jessica Garcia, and Roberto Gordillo, “17-Year-Old Boy with Renal Failure and the Highest Reported Creatinine in Pediatric Literature,” Case Reports in Pediatrics, vol. 2015, Article ID 703960, 4 pages, 2015. https://doi.org/10.1155/2015/703960.
+summary(hds$CREATININE_min)
+
+# CREATININE_max: keep as is 
+#
+# Reference: same as before
+summary(hds$CREATININE_max)
+
+
+# CHLORIDE_min: remove anything below 39, max is fine
+#
+#
+summary(hds$CHLORIDE_min)
+hds %>% ggplot()+
+  geom_histogram(aes(CHLORIDE_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,142))
+hds %>% select(CHLORIDE_min) %>% 
+  filter(CHLORIDE_min <=75) %>% 
+  count(CHLORIDE_min)
+
+# CHLORIDE_max: keep as is 
+#
+# Reference:
+# 1. Graber ML, Quigg RJ, Stempsey WE, Weis S. Spurious hyperchloremia and decreased anion gap in hyperlipidemia. Ann Intern Med. 1983 May;98(5 Pt 1):607-9.
+summary(hds$CHLORIDE_max)
+
+# GLUCOSE_min: Remove anything below 20- the person is probably brain dead at that stage, Max reported is fine. 
+# 
+# References:
+# 1. Cryer PE. Hypoglycemia, functional brain failure, and brain death. J Clin Invest. 2007;117(4):868-70. 
+# 2. Honda, Yasuyuki et al. A case of successful treatment of a patient with hyperglycemia of 2700 mg/dL. The American Journal of Emergency Medicine , Volume 30 , Issue 1 , 254.e1 - 254.e2
+summary(hds$GLUCOSE_min)
+hds %>% ggplot()+
+  geom_histogram(aes(GLUCOSE_min), color="white", binwidth = 5)+
+  scale_x_continuous(limits=c(0,651))
+hds %>% select(GLUCOSE_min) %>% 
+  filter(GLUCOSE_min <=70) %>% 
+  count(GLUCOSE_min)
+
+# GLUCOSE_max: Keep as is 
+# 
+summary(hds$GLUCOSE_max)
+hds %>% ggplot()+
+  geom_histogram(aes(GLUCOSE_max), color="white", binwidth = 5)+
+  scale_x_continuous(limits=c(0,651))
+hds %>% select(GLUCOSE_max) %>% 
+  filter(GLUCOSE_max >=198) %>% 
+  count(GLUCOSE_max)
+
+# HEMATOCRIT_min: keep as is
+#
+# References: 
+# 1. M.K. Viele MD. R.B. Weiskopf.1.What canwelearn about the needfortransfusionfrompatientswho refuse blood? The experience with Jehovah’s Witnesses.May 1994 https://doi.org/10.1046/j.1537-2995.1994.34594249050.x
+
+summary(hds$HEMATOCRIT_min)
+hds %>% ggplot()+
+  geom_histogram(aes(HEMATOCRIT_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,67))
+hds %>% select(HEMATOCRIT_min) %>% 
+  filter(HEMATOCRIT_min <=25.5) %>% 
+  count(HEMATOCRIT_min)
+
+# HEMATOCRIT_max: keep as is
+#
+summary(hds$HEMATOCRIT_max)
+hds %>% select(HEMATOCRIT_max) %>% 
+  filter(HEMATOCRIT_max >=39.40) %>% 
+  count(HEMATOCRIT_max)
+
+# Hemoglobin: these should match the values of hematocrite/3 so keep both as is
+#
+summary(hds$HEMOGLOBIN_min)
+summary(hds$HEMOGLOBIN_max)
+
+# PLATELET_min: keep as is (Just in case that these values are value*10^3, eg. 100X10^3) 
+#
+# Reference: 
+# 1. Anthony M. H. HoJoseph C. H. WooJohn G. KeltonLawrence Chiu. Spurious hyperkalaemia associated with severe thrombocytosis and leukocytosis.Can J Anaesth (1991) 38: 613. https://doi.org/10.1007/BF03008197
+# 2. https://www.researchgate.net/post/what_is_the_minimum_platelet_count_ever_reported_in_a_patient_not_having_bleeding_complications
+summary(hds$PLATELET_min)
+hds %>% ggplot()+
+  geom_histogram(aes(PLATELET_min), color="white", binwidth = 10)+
+  scale_x_continuous(limits=c(0,1629))
+hds %>% select(PLATELET_min) %>% 
+  filter(PLATELET_min <=136) %>% 
+  count(PLATELET_min)
+
+# PLATELET_min: keep as is they are high but it seems plausible
+#
+summary(hds$PLATELET_max)
+hds %>% ggplot()+
+  geom_histogram(aes(PLATELET_max), color="white", binwidth = 10)+
+  scale_x_continuous(limits=c(0,2292))
+hds %>% select(PLATELET_max) %>% 
+  filter(PLATELET_max >=303) %>% 
+  count(PLATELET_max)
+
+# POTASSIUM_MIN: Keep as is, or we can cut at 0.9 mmol/L (wouldnt make a difference). 
+#
+# References:
+# 1. ten Bos L, Veenstra T, Westerhof B et al. A case of extreme hypokalemia. Netherlands J of Medicine 2016; 74: 406-409 
+# 2. Tran H. Extreme hyperkalemia. South Med J 2005; 98: 729-32 
+summary(hds$POTASSIUM_min)
+hds %>% ggplot()+
+  geom_histogram(aes(POTASSIUM_min), color="white", binwidth = 0.1)+
+  scale_x_continuous(limits=c(0,8.1))
+hds %>% select(POTASSIUM_min) %>% 
+  filter(POTASSIUM_min <=3.4) %>% 
+  count(POTASSIUM_min)
+
+# POTASSIUM_MAX: This is important. Cut above 13.80. Min value is fine. 
+#
+# References:
+# Same as above
+summary(hds$POTASSIUM_max)
+hds %>% ggplot()+
+  geom_histogram(aes(POTASSIUM_max), color="white", binwidth = 0.1)+
+  scale_x_continuous(limits=c(0,27.5))
+hds %>% select(POTASSIUM_max) %>% 
+  filter(POTASSIUM_max >=5) %>% 
+  count(POTASSIUM_max)
+
+
+# SODIUM_MIN: A) cut below 99 or B) cut below 74.  Max here is fine
+#
+# Reference:
+# Gupta E, Kunjal R, Cury J. Severe hyponatremia due to valproic acid toxicity. J Clinical Medicine Research 2015; 7: 717-19
+summary(hds$SODIUM_min)
+hds %>% ggplot()+
+  geom_histogram(aes(SODIUM_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,178))
+hds %>% select(SODIUM_min) %>% 
+  filter(SODIUM_min <=134) %>% 
+  count(SODIUM_min)
+ 
+# SODIUM_MAXl Keep as is
+#
+summary(hds$SODIUM_max)
