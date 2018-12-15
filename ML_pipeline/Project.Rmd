@@ -159,6 +159,61 @@ hds<-hds %>% mutate(urineoutput=abs(urineoutput))%>%
 ## since we have many patients we can eliminate these people
 ```
 
+
+```{r}
+
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'AMERICAN INDIAN', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'AMERICAN INDIAN/ALASKA', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE', 'NATIVE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE FEDERALLY RECOGNIZED TRIBE', 'NATIVE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - ASIAN INDIAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - CHINESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - CAMBODIAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - FILIPINO', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - JAPANESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - KOREAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - OTHER|ASIAN - THAI', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - VIETNAMESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/AFRICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/AFRICAN AMERICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/CAPE VERDEAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/HAITIAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK AMERICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'CARIBBEAN ISLAND|MULTI RACE ETHNICITY', 'OTHER') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - COLOMBIAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CUBAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - DOMINICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - GUATEMALAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - HONDURAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - MEXICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - PUERTO RICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - SALVADORAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'SOUTH AMERICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'WHITE - BRAZILIAN|WHITE - EASTERN EUROPEAN|WHITE - OTHER EUROPEAN|WHITE - RUSSIAN', 'WHITE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'PATIENT DECLINED TO ANSWER|UNABLE TO OBTAIN|UNKNOWN/NOT SPECIFIED' , 'NO_ANSWER') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)' , 'HISPANIC OR LATINO') 
+
+hds<-hds %>% 
+  mutate(ethnicity=case_when(ethnicity=="ASIAN"~1,
+                             ethnicity=="BLACK"~2,
+                             ethnicity=="HISPANIC OR LATINO"~3, 
+                             ethnicity=="HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)"~3, 
+                             ethnicity=="HISPANIC OR LATINO" ~ 4,
+                             ethnicity=="HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)"~ 4,
+                             ethnicity=="MIDDLE EASTERN" ~5,  
+                             ethnicity=="NATIVE"~ 6, 
+                             ethnicity=="NO_ANSWER"~ 7, 
+                             ethnicity=="OTHER"~ 8, 
+                             ethnicity=="PORTUGUESE"~9,
+                             ethnicity=="WHITE"~10)) %>%
+  mutate(ethnicity=as.character(ethnicity))
+
+```
+
 Pre-processing categorical variable into 0vs1 columns and making dummies:
 ```{r}
 hds<-hds %>% mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
@@ -168,13 +223,16 @@ Dummies
 ```{r}
 hds<-hds %>% mutate(v=1,
                     admission_type=paste("AdmissionType",admission_type,sep="_"),
-                    admission_location=paste("AdmissionLocation",admission_location,sep="_"))
+                    admission_location=paste("AdmissionLocation",admission_location,sep="_"),
+                    ethnicity=paste("Ethnicity", ethnicity, sep="_"))
 
 hds3<-hds %>% 
-  select(icustay_id, v, admission_type, admission_location) %>%
+  select(icustay_id, v, admission_type, admission_location, ethnicity) %>%
   spread(admission_type, v, fill = 0) %>%
   mutate(v=1)%>%
-  spread(admission_location, v, fill = 0)
+  spread(admission_location, v, fill = 0)%>%
+  mutate(v=1)%>%
+  spread(ethnicity, v, fill = 0)
   
 ```
 
@@ -194,14 +252,14 @@ NzvNames
 hds3 <- hds3[!(names(hds3) %in% NzvNames)]
 
 hds<-left_join(hds3, hds)%>%
-  select(-c(admission_type, admission_location, v))
+  select(-c(admission_type, admission_location, ethnicity, v))
 ```
 
 features to delete
 ```{r}
 hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id",
                          "admittime","religion","insurance","dischtime","diagnosis",
-                         "hospital_expire_flag","ICUSTAY_AGE_GROUP", "ethnicity"))
+                         "hospital_expire_flag","ICUSTAY_AGE_GROUP"))
 
 ```
 
@@ -210,12 +268,12 @@ hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id
 # we keep icustay_expire_flag because it is the target to predict
 
 not_to_standardize <- hds %>% 
-  select(gender, first_icu_stay, AdmissionType_ELECTIVE:`AdmissionLocation_TRANSFER FROM HOSP/EXTRAM`, 
+  select(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7, 
          icustay_expire_flag)
 
 # features to standardize
 col_to_standardize <- hds %>% 
-  select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:`AdmissionLocation_TRANSFER FROM HOSP/EXTRAM`,
+  select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7,
             icustay_expire_flag))
 ```
 
@@ -227,7 +285,6 @@ transformed <- predict(preprocessParams, col_to_standardize)
 final <- cbind(transformed, not_to_standardize) %>% 
   select(icustay_expire_flag, everything()) ## class variable first
 ```
-
 
 PCA
 ```{r}
