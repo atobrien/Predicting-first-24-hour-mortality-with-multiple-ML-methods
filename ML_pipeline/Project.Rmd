@@ -761,62 +761,55 @@ auc(roc_classifier)
 varImp(classifier)
 ```
 
+
 ## Gradient boosting with K-folds sampling
 ```{r, eval=F}
 
-#working on it...the column names like AdmissionLocation CLINIC REFERRAL break the code... i think the data needs to be integers but i can change.
-
-# First I adapt the df for the model placeing outcome at the end
+# Create dataframe for xgboost
 xgTrain<-dataTrain %>% 
-  mutate(gender= as.integer(gender))  %>%
-  mutate(first_icu_stay = as.integer(first_icu_stay))  %>%
-  mutate(AdmissionType_ELECTIVE = as.integer(AdmissionType_ELECTIVE))  %>%
-  mutate(AdmissionType_EMERGENCY = as.integer(AdmissionType_EMERGENCY))  %>%
-  #mutate(AdmissionLocation_CLINIC REFERRAL/PREMATURE = as.integer(AdmissionLocation_CLINIC REFERRAL/PREMATURE))  %>%
-  mutate(AdmissionLocation_EMERGENCY ROOM ADMIT = as.integer(AdmissionLocation_EMERGENCY ROOM ADMIT))  %>%
-  mutate(AdmissionLocation_PHYS REFERRAL/NORMAL DELI = as.integer(AdmissionLocation_PHYS REFERRAL/NORMAL DELI)) %>% 
-  mutate(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM = as.integer(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM)) %>% 
-  mutate(Ethnicity_10=as.integer(Ethnicity_10)) %>% 
-  mutate(Ethnicity_2=as.integer(Ethnicity_2)) %>% 
-  mutate(Ethnicity_7=as.integer(Ethnicity_7)) %>% 
+  mutate(outcome=icustay_expire_flag) %>%
   select(-c(icustay_expire_flag)) 
 
-
-
-xgTest<-dataTest %>% 
-  mutate(gender= as.integer(gender))  %>%
-  mutate(first_icu_stay= as.integer(first_icu_stay))  %>%
-  mutate(AdmissionType_ELECTIVE = as.integer(AdmissionType_ELECTIVE))  %>%
-  mutate(AdmissionType_EMERGENCY = as.integer(AdmissionType_EMERGENCY))  %>%
-  mutate(AdmissionLocation_CLINIC REFERRAL/PREMATURE = as.integer(AdmissionLocation_CLINIC REFERRAL/PREMATURE))  %>%
-  mutate(AdmissionLocation_EMERGENCY ROOM ADMIT = as.integer(AdmissionLocation_EMERGENCY ROOM ADMIT))  %>%
-  mutate(AdmissionLocation_PHYS REFERRAL/NORMAL DELI = as.integer(AdmissionLocation_PHYS REFERRAL/NORMAL DELI)) %>% 
-  mutate(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM = as.integer(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM)) %>% 
-  mutate(Ethnicity_10=as.integer(Ethnicity_10)) %>% 
-  mutate(Ethnicity_2=as.integer(Ethnicity_2)) %>% 
-  mutate(Ethnicity_7=as.integer(Ethnicity_7)) %>% 
+xgTest<-dataTest %>%  
+  mutate(outcome=icustay_expire_flag) %>%
   select(-c(icustay_expire_flag)) 
-
 
 # Fitting XGBoost to Training set (don't use clusters-xgboost has built in parallelization- it will compete for resources)
 
-classifier <- xgboost(data = as.matrix(xgTrain[-70]), label = xgTrain$outcome, nrounds = 2) #note to self 198
+classifier <- xgboost(data = as.matrix(xgTrain[,-ncol(xgTrain)]), label = xgTrain$outcome, nrounds = 20)
+
+
+#these parameters are crazy - i messed with them- so far the best performance was aroun 67% need to fix!
+# caerful running 
+
+# Fitting XGBoost to Training set (don't use clusters-xgboost has built in parallelization- it will compete for resources)
+
+classifier <- xgboost(data = as.matrix(xgTrain[,-ncol(xgTrain)]), label = xgTrain$outcome, nrounds = 20)
+y_pred = predict(classifier, newdata = as.matrix(xgTest[-66]))
+y_pred = (y_pred >= 0.70)
+cm = table(xgTest[, ncol(xgTrain)], y_pred)
+cm
+accuracy = (cm[1,1] + cm[2,2]) / (cm[1,1] + cm[2,2] + cm[1,2] + cm[2,1])
+accuracy = mean(as.numeric(cv))
+accuracy
+
 
 # Evaluating model performance with K-fold cross validation
-folds = createFolds(xgTrain$outcome, k = 2)
+folds = createFolds(xgTrain$outcome, k = 10)
 cv = lapply(folds, function(x) {
   training_fold = xgTrain[-x, ]
   test_fold = xgTrain[x, ]
-  classifier = xgboost(data = as.matrix(xgTrain[-70]), label = xgTrain$outcome, nrounds = 2)
-  y_pred = predict(classifier, newdata = as.matrix(test_fold[-70]))
-  y_pred = (y_pred >= 0.5)
+  classifier = xgboost(data = as.matrix(xgTrain[-66]), label = xgTrain$outcome, nrounds = 20)
+  y_pred = predict(classifier, newdata = as.matrix(test_fold[-66]))
+  y_pred = (y_pred >= 0.95)
   cm = table(test_fold[, ncol(xgTrain)], y_pred)
   accuracy = (cm[1,1] + cm[2,2]) / (cm[1,1] + cm[2,2] + cm[1,2] + cm[2,1])
-  return(accuracy) 
+  return(accuracy)
   })
 accuracy = mean(as.numeric(cv))
+accuracy
 
-names(xgTrain)
+
 ```
 
 
