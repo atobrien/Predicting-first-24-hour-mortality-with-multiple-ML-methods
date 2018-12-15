@@ -3,7 +3,6 @@
 # ANIONGAP_min: Keep ANIONGAP_min as is, it appears normal
 summary(hds$ANIONGAP_min) 
 
-
 # ANIONGAP_max: Either cut off at 40 or leave as is
 #
 # References: 
@@ -37,9 +36,7 @@ summary(hds$CREATININE_min)
 # Reference: same as before
 summary(hds$CREATININE_max)
 
-
 # CHLORIDE_min: remove anything below 39, max is fine
-#
 #
 summary(hds$CHLORIDE_min)
 hds %>% ggplot()+
@@ -151,11 +148,11 @@ hds %>% select(POTASSIUM_max) %>%
   filter(POTASSIUM_max >=5) %>% 
   count(POTASSIUM_max)
 
-
 # SODIUM_MIN: A) cut below 99 or B) cut below 74.  Max here is fine
 #
 # Reference:
 # Gupta E, Kunjal R, Cury J. Severe hyponatremia due to valproic acid toxicity. J Clinical Medicine Research 2015; 7: 717-19
+
 summary(hds$SODIUM_min)
 hds %>% ggplot()+
   geom_histogram(aes(SODIUM_min), color="white", binwidth = 1)+
@@ -167,3 +164,27 @@ hds %>% select(SODIUM_min) %>%
 # SODIUM_MAXl Keep as is
 #
 summary(hds$SODIUM_max)
+
+# BUN_min: Keep as is. It's incredibly high (higher than highest reported in literature) but it's possible
+#
+# Reference:
+# 1. 17-Year-Old Boy with Renal Failure and the Highest Reported Creatinine in Pediatric Literature
+summary(hds$BUN_min)
+hds %>% ggplot()+
+  geom_histogram(aes(BUN_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,254))
+hds %>% select(BUN_min) %>% 
+  filter(BUN_min >38) %>% 
+  count(BUN_min)
+
+# BUN_max: keep as is. same as before
+#
+summary(hds$BUN_max)
+
+# WBC_min: keep as is, both are possible in severe immunodeficiency and in Chronic Myeloid Leukemia
+#
+summary(hds$WBC_min)
+
+# WBC_max: keep as is, same.
+#
+summary(hds$WBC_max)
