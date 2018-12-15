@@ -67,6 +67,42 @@ load('../data/hds_1213.Rda')
 hds<-hds %>% unique() # make sure we dont have duplicates 
 ```
 
+
+
+We find that some people died before admission to the ICU. This is a mistake so we delete them from the dataset
+
+```{r}
+hds<- hds %>% 
+  mutate(deathdiff=difftime(deathtime,intime, unit="days"))%>% 
+  mutate(diedEver=ifelse(!is.na(deathtime), 1, 0))%>%
+  mutate(died24H=ifelse(!is.na(deathtime) & as.numeric(deathdiff)<=1, 1, 0))%>% 
+  filter(deathdiff>=0  | is.na(deathdiff))%>% 
+  select(-diedEver)
+## delete negative values - people who died before they were admitted - this is a mistake
+```
+
+
+```{r}
+plot<-hds %>% 
+  mutate(deathdiff=ceiling(deathdiff))%>% 
+  mutate(deathDAYS=ifelse(deathdiff<7, deathdiff, "7 or more"))%>% 
+  filter(!is.na(deathDAYS))%>% 
+  ggplot(data=.)+
+  geom_histogram(aes(x=deathDAYS), stat = "count", fill="navyblue", alpha=0.7)+
+  xlab("Days after ICU admission")+
+  ylab("Number of patients")+
+  ggtitle("Death time in days after ICU admission for patients who died")+
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_y_continuous(breaks=seq(0, 3000, 200))
+
+plot
+```
+
+
+
+We create a flag for people who die within the first 24h in the ICU 
+
 ## Plot to obtain the missing values:
 ```{r}
 # missmap(hds)
@@ -527,10 +563,10 @@ hds %>% select(RespRate_Max) %>%
 After exploring the different lab values, we remove patients for which their values are implausible based on existing literature. More research will need to be done to reconcile these values, and 
 
 ```{r}
-dim(hds %>% filter((ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8)))
-#there are 139 patients that have clinically hard to believe lab values
+dim(hds %>% filter((ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8|SODIUM_min<=74)))
+#there are 144 patients that have clinically hard to believe lab values
 
-hds <- hds %>% filter(!(ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8))
+hds <- hds %>% filter(!(ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8|SODIUM_min<=74))
 ```
 
 
@@ -538,9 +574,16 @@ hds <- hds %>% filter(!(ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM
 ```{r}
 hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id",
                          "admittime","religion","insurance","dischtime","diagnosis",
-                         "hospital_expire_flag","ICUSTAY_AGE_GROUP")) %>% add_column(Ethnicity_7 = ifelse(hds$Ethnicity_2+hds$Ethnicity_5+hds$Ethnicity_6==0,1,0), .after = "Ethnicity_6")
+                         "hospital_expire_flag","ICUSTAY_AGE_GROUP")) 
+
+hds<- hds %>% 
+  add_column(Ethnicity_7 = ifelse(hds$Ethnicity_2+hds$Ethnicity_5+hds$Ethnicity_6==0,1,0), .after = "Ethnicity_6")
 
 ```
+
+
+
+
 
 ```{r}
 # features that we don't want to standardize
@@ -548,12 +591,12 @@ hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id
 
 not_to_standardize <- hds %>% 
   select(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7, 
-         icustay_expire_flag)
+         icustay_expire_flag, died24H)
 
 # features to standardize
 col_to_standardize <- hds %>% 
   select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7,
-            icustay_expire_flag))
+            icustay_expire_flag, died24H))
 ```
 
 Standardize data except icustay_id and icustay_expire_flag (target) and categorical features:
@@ -572,13 +615,17 @@ res.pca = PCA(final[,2:length(final)], scale.unit=TRUE, ncp=5, graph=T)
 summary(res.pca)
 ```
 
+
+```{r}
+final %>% select(-died24H) -> final
+```
+
 ## Data split:
 ```{r}
 final[,"icustay_expire_flag"] <- factor(final[,"icustay_expire_flag"])
 trainIndex <- createDataPartition(final$icustay_expire_flag, p=0.80, list=FALSE)
 dataTrain <- final[ trainIndex,]
 dataTest <- final[-trainIndex,]
-
 ```
 
 # Models
@@ -608,18 +655,25 @@ down_train <- downSample(x = dataTrain[, -ncol(dataTrain)],
 table(down_train$Class)
 down_train<- down_train %>% select(-c(Class))
 
+
+down_train<- down_train %>% select(-c(Ethnicity_2, Ethnicity_5, Ethnicity_6))
+dataTest<- dataTest %>% select(-c(Ethnicity_2, Ethnicity_5, Ethnicity_6, Ethnicity_7))
 ```
 
 ## Train a random forest 
 
 ```{r}
-
 up_train$icustay_expire_flag<- as.factor(up_train$icustay_expire_flag)
-levels(up_train$icustay_expire_flag) <- c("X0", "X1")
-
+down_train$icustay_expire_flag<- as.factor(down_train$icustay_expire_flag)
 dataTest$icustay_expire_flag<- as.factor(dataTest$icustay_expire_flag)
-levels(dataTest$icustay_expire_flag) <- c("X0", "X1")
 
+levels(up_train$icustay_expire_flag) <- c("X0", "X1")
+levels(down_train$icustay_expire_flag) <- c("X0", "X1")
+levels(dataTrain$icustay_expire_flag) <- c("X0", "X1")
+levels(dataTest$icustay_expire_flag) <- c("X0", "X1")
+```
+
+```{r}
 ## commenting out the random forest because it takes more than 10 hours even while parallelized..
 # cl <- makePSOCKcluster(4)
 # registerDoParallel(cl)
@@ -654,23 +708,21 @@ levels(dataTest$icustay_expire_flag) <- c("X0", "X1")
 
 
 ```{r}
-trainControl<-trainControl(method="repeatedcv",
-                           summaryFunction=twoClassSummary,
-                           number= 6, 
-                           repeats = 5, 
-                           classProbs = TRUE,
-                           search="random")
 
 # SVM 
 set.seed(7) 
-fit.svm <- train(icustay_expire_flag~., data=up_train, method="svmRadial", trControl=trainControl, tuneLength = 20)
+fit.svm <- train(icustay_expire_flag~., 
+                 data=down_train,
+                 method="svmRadial",
+                 trControl=trainControl(method="repeatedcv",
+                                        summaryFunction=twoClassSummary, 
+                                        number= 6,  
+                                        repeats = 5,  
+                                        classProbs = TRUE,
+                                        search="random"), 
+                 tuneLength = 20)
 print(fit.svm)
 
-# KNN 
-set.seed(7) 
-fit.knn <- train(icustay_expire_flag ~., data=up_train, method="knn", tuneLength = 100, trControl=trainControl) 
-print(fit.knn)
-# Random Forest 
 ```
 
 
@@ -832,11 +884,4 @@ accuracy
 
 
 
-
-
-
-
-```{r}
-ggplot(x=)
-```
 
