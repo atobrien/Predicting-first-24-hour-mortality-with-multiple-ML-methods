@@ -19,6 +19,7 @@ library(stringr) ## string processing
 library(FactoMineR)
 library(pROC)
 library(doParallel)
+library(xgboost)
 ```
 
 ```{r}
@@ -741,7 +742,7 @@ classifier <- glm(formula = outcome ~ .,
 summary(classifier)
 
 # Predicting the Test set results
-prob_pred <- predict(classifier, type = 'response', newdata = logTest[(-(ncol(logTrain))+1)])
+prob_pred <- predict(classifier, type = 'response', newdata = logTest[-ncol(logTrain)])
 y_pred <- ifelse(prob_pred > 0.5, 1, 0)
 
 # Set up the Confusion Matrix
@@ -760,36 +761,62 @@ auc(roc_classifier)
 varImp(classifier)
 ```
 
-
-
-
-
-
-
-
-
-
 ## Gradient boosting with K-folds sampling
 ```{r, eval=F}
-# Fitting XGBoost to Training set
-classifier = xgboost(data = as.matrix(training_set[-51]), label = training_set$outcome, nrounds = 10)
 
+#working on it...the column names like AdmissionLocation CLINIC REFERRAL break the code... i think the data needs to be integers but i can change.
+
+# First I adapt the df for the model placeing outcome at the end
+xgTrain<-dataTrain %>% 
+  mutate(gender= as.integer(gender))  %>%
+  mutate(first_icu_stay = as.integer(first_icu_stay))  %>%
+  mutate(AdmissionType_ELECTIVE = as.integer(AdmissionType_ELECTIVE))  %>%
+  mutate(AdmissionType_EMERGENCY = as.integer(AdmissionType_EMERGENCY))  %>%
+  #mutate(AdmissionLocation_CLINIC REFERRAL/PREMATURE = as.integer(AdmissionLocation_CLINIC REFERRAL/PREMATURE))  %>%
+  mutate(AdmissionLocation_EMERGENCY ROOM ADMIT = as.integer(AdmissionLocation_EMERGENCY ROOM ADMIT))  %>%
+  mutate(AdmissionLocation_PHYS REFERRAL/NORMAL DELI = as.integer(AdmissionLocation_PHYS REFERRAL/NORMAL DELI)) %>% 
+  mutate(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM = as.integer(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM)) %>% 
+  mutate(Ethnicity_10=as.integer(Ethnicity_10)) %>% 
+  mutate(Ethnicity_2=as.integer(Ethnicity_2)) %>% 
+  mutate(Ethnicity_7=as.integer(Ethnicity_7)) %>% 
+  select(-c(icustay_expire_flag)) 
+
+
+
+xgTest<-dataTest %>% 
+  mutate(gender= as.integer(gender))  %>%
+  mutate(first_icu_stay= as.integer(first_icu_stay))  %>%
+  mutate(AdmissionType_ELECTIVE = as.integer(AdmissionType_ELECTIVE))  %>%
+  mutate(AdmissionType_EMERGENCY = as.integer(AdmissionType_EMERGENCY))  %>%
+  mutate(AdmissionLocation_CLINIC REFERRAL/PREMATURE = as.integer(AdmissionLocation_CLINIC REFERRAL/PREMATURE))  %>%
+  mutate(AdmissionLocation_EMERGENCY ROOM ADMIT = as.integer(AdmissionLocation_EMERGENCY ROOM ADMIT))  %>%
+  mutate(AdmissionLocation_PHYS REFERRAL/NORMAL DELI = as.integer(AdmissionLocation_PHYS REFERRAL/NORMAL DELI)) %>% 
+  mutate(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM = as.integer(AdmissionLocation_TRANSFER FROM HOSP/EXTRAM)) %>% 
+  mutate(Ethnicity_10=as.integer(Ethnicity_10)) %>% 
+  mutate(Ethnicity_2=as.integer(Ethnicity_2)) %>% 
+  mutate(Ethnicity_7=as.integer(Ethnicity_7)) %>% 
+  select(-c(icustay_expire_flag)) 
+
+
+# Fitting XGBoost to Training set (don't use clusters-xgboost has built in parallelization- it will compete for resources)
+
+classifier <- xgboost(data = as.matrix(xgTrain[-70]), label = xgTrain$outcome, nrounds = 2) #note to self 198
 
 # Evaluating model performance with K-fold cross validation
-folds = createFolds(training_set$outcome, k = 10)
+folds = createFolds(xgTrain$outcome, k = 2)
 cv = lapply(folds, function(x) {
-  training_fold = training_set[-x, ]
-  test_fold = training_set[x, ]
-  classifier = xgboost(data = as.matrix(training_set[-51]), label = training_set$outcome, nrounds = 10)
-  y_pred = predict(classifier, newdata = as.matrix(test_fold[-51]))
-  y_pred= (y_pred >= 0.5)
-  cm = table(test_fold[, 51], y_pred)
+  training_fold = xgTrain[-x, ]
+  test_fold = xgTrain[x, ]
+  classifier = xgboost(data = as.matrix(xgTrain[-70]), label = xgTrain$outcome, nrounds = 2)
+  y_pred = predict(classifier, newdata = as.matrix(test_fold[-70]))
+  y_pred = (y_pred >= 0.5)
+  cm = table(test_fold[, ncol(xgTrain)], y_pred)
   accuracy = (cm[1,1] + cm[2,2]) / (cm[1,1] + cm[2,2] + cm[1,2] + cm[2,1])
-  return(accuracy)
-})
+  return(accuracy) 
+  })
 accuracy = mean(as.numeric(cv))
 
-
+names(xgTrain)
 ```
 
 
