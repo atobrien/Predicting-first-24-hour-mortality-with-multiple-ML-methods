@@ -699,6 +699,35 @@ logTest %>%
 
 ```{r}
 
+select_significant_feature <- function(classifier){
+  ethni <- c('Ethnicity_1','Ethnicity_2','Ethnicity_3')
+  admissiontype <- c('AdmissionType_ELECTIVE','AdmissionType_EMERGENCY')
+  admissionlocation <- c('`AdmissionLocation_CLINIC REFERRAL/PREMATURE`','`AdmissionLocation_EMERGENCY ROOM ADMIT`','`AdmissionLocation_PHYS REFERRAL/NORMAL DELI`','`AdmissionLocation_TRANSFER FROM HOSP/EXTRAM`')
+  
+  list_features <- summary(classifier)$coefficients[-1,4]<=0.05
+  names <- names(list_features)[list_features]
+  for (name in names){
+  print(name)
+    if (substr(name, 1, 9)=='Ethnicity'){
+      names <- c(names,ethni)
+    }
+    if (substr(name,1,13)=='AdmissionType'){
+      names <- c(names,admissiontype)
+    }
+    if (substr(name,1,18)=='`AdmissionLocation'){
+      names <- c(names,admissionlocation)
+    }
+  }
+  names <- unique(names)
+  return(names)
+}
+
+logTrain %>% select(select_significant_feature(classifier))
+
+
+
+
+
 # Approach adopted from Dr. E. John Orav:
 # "Build a model including only significant predictors.  Do not worry about 
 # confounders.  Collinearity will not be a problem since the covariates in 
@@ -709,6 +738,9 @@ logTest %>%
 classifier = glm(formula = outcome ~ .,
                  family = binomial,
                  data = logTrain)
+
+
+
 
 # Check model for statistical signifcance and remove non-significant values
 summary(classifier)
