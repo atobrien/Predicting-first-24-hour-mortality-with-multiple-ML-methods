@@ -1,3 +1,4 @@
+```{r}
 ## Review of continuous clinical variables
 
 # ANIONGAP_min: Keep ANIONGAP_min as is, it appears normal
@@ -160,7 +161,7 @@ hds %>% ggplot()+
 hds %>% select(SODIUM_min) %>% 
   filter(SODIUM_min <=134) %>% 
   count(SODIUM_min)
- 
+
 # SODIUM_MAXl Keep as is
 #
 summary(hds$SODIUM_max)
@@ -188,3 +189,50 @@ summary(hds$WBC_min)
 # WBC_max: keep as is, same.
 #
 summary(hds$WBC_max)
+
+## All of the vitals  suffer from the same problem that they could have been recorded at time of death or during death so they will be low 
+
+# HeartRate_Min: Keep as is. This is very difficult because it can be that the patient is dieing and the HR was recorded at that moment (their last heart beat?). (or remove 0.35)
+#
+# Reference:
+summary(hds$HeartRate_Min)
+hds %>% ggplot()+
+  geom_histogram(aes(HeartRate_Min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,143))
+hds %>% select(HeartRate_Min) %>% 
+  filter(HeartRate_Min <61) %>% 
+  count(HeartRate_Min)
+
+# HeartRate_Max: Keep as is
+summary(hds$HeartRate_Max)
+
+#SysBP_Min: Keep as is
+summary(hds$SysBP_Min)
+hds %>% ggplot()+
+  geom_histogram(aes(SysBP_Min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,181))
+hds %>% select(SysBP_Min) %>% 
+  filter(SysBP_Min <82) %>% 
+  count(SysBP_Min)
+
+#SysBP_Max: Keep as is
+summary(hds$SysBP_Max)
+
+#DiasBP_Min: Keep as is
+summary(hds$DiasBP_Min)
+
+#DiasBP_Max: very high but keep as is could be anything like post-stroke dysautonomia etc
+summary(hds$DiasBP_Max)
+hds %>% select(DiasBP_Max) %>% 
+  filter(DiasBP_Max >92) %>% 
+  count(DiasBP_Max)
+
+# RespRate_Min: Keep as is
+summary(hds$RespRate_Min)
+
+# RespRate_Max: keep as is- very high but possible
+summary(hds$RespRate_Max)
+hds %>% select(RespRate_Max) %>% 
+  filter(RespRate_Max >15) %>% 
+  count(RespRate_Max)
+```
