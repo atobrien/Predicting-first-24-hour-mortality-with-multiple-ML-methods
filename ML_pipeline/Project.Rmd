@@ -593,13 +593,21 @@ predictions <- predict(fit, dataTest[,2:length(dataTest)])
 confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
 ```
 
-More models: 
+Create up-sampled and down-sampled dataset: 
 ```{r}
 set.seed(262)
+#upsample
 up_train <- upSample(x = dataTrain[, -ncol(dataTrain)],
                      y = dataTrain$icustay_expire_flag)                         
 table(up_train$Class)
 up_train<- up_train %>% select(-c(Class))
+
+#downsample
+down_train <- downSample(x = dataTrain[, -ncol(dataTrain)],
+                     y = dataTrain$icustay_expire_flag)
+table(down_train$Class)
+down_train<- down_train %>% select(-c(Class))
+
 ```
 
 ## Train a random forest 
@@ -612,35 +620,35 @@ levels(up_train$icustay_expire_flag) <- c("X0", "X1")
 dataTest$icustay_expire_flag<- as.factor(dataTest$icustay_expire_flag)
 levels(dataTest$icustay_expire_flag) <- c("X0", "X1")
 
-
-cl <- makePSOCKcluster(4)
-registerDoParallel(cl)
-
-set.seed(7)
-randomforest<- train(icustay_expire_flag ~ ., 
-                 data = up_train, 
-                 method = "rf", 
-                 tuneLength = 20,
-                 metric="ROC",
-                 trControl=trainControl(method="cv",
-                           summaryFunction=twoClassSummary,
-                           number= 6,
-                           classProbs = TRUE))
-
-stopCluster(cl)
-
-print(randomforest)
-print(randomforest$finalModel)
-
-predictions<-predict.train(object=randomforest,dataTest,type="prob")
-
-predictions<-predict.train(object=randomforest,dataTest,type="raw")
-confusionMatrix(predictions,dataTest$icustay_expire_flag)
-roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions))
-auc(roc_obj)
-
-variableimportancerandomforest <- varImp(randomforest, scale = FALSE)
-variableimportancerandomforest
+## commenting out the random forest because it takes more than 10 hours even while parallelized..
+# cl <- makePSOCKcluster(4)
+# registerDoParallel(cl)
+# 
+# set.seed(7)
+# randomforest<- train(icustay_expire_flag ~ ., 
+#                  data = up_train, 
+#                  method = "rf", 
+#                  tuneLength = 20,
+#                  metric="ROC",
+#                  trControl=trainControl(method="cv",
+#                            summaryFunction=twoClassSummary,
+#                            number= 6,
+#                            classProbs = TRUE))
+# 
+# stopCluster(cl)
+# 
+# print(randomforest)
+# print(randomforest$finalModel)
+# 
+# predictions<-predict.train(object=randomforest,dataTest,type="prob")
+# 
+# predictions<-predict.train(object=randomforest,dataTest,type="raw")
+# confusionMatrix(predictions,dataTest$icustay_expire_flag)
+# roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions))
+# auc(roc_obj)
+# 
+# variableimportancerandomforest <- varImp(randomforest, scale = FALSE)
+# variableimportancerandomforest
 
 ```
 
