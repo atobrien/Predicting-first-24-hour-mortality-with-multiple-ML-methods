@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+#library(ResourceSelection) this loads almost all of the libraries below 
 library(klaR) ## masks select from dplyr
 library(dplyr)
 library(caTools)
@@ -720,7 +721,7 @@ logTrain<-logTrain %>% select(-c(BICARBONATE_max,
                        previous))
 
 # Fitting Logistic Regression to the Training set
-classifier = glm(formula = outcome ~ .,
+classifier <- glm(formula = outcome ~ .,
                  family = binomial,
                  data = logTrain)
 
@@ -732,7 +733,7 @@ logTrain<-logTrain %>% select(-c(CHLORIDE_max,
                                  POTASSIUM_min))
 
 # Fitting Logistic Regression to the Training set
-classifier = glm(formula = outcome ~ .,
+classifier <- glm(formula = outcome ~ .,
                  family = binomial,
                  data = logTrain)
 
@@ -740,19 +741,24 @@ classifier = glm(formula = outcome ~ .,
 summary(classifier)
 
 # Predicting the Test set results
-prob_pred = predict(classifier, type = 'response', newdata = logTest[(-(ncol(logTrain))+1)])
-y_pred = ifelse(prob_pred > 0.5, 1, 0)
+prob_pred <- predict(classifier, type = 'response', newdata = logTest[(-(ncol(logTrain))+1)])
+y_pred <- ifelse(prob_pred > 0.5, 1, 0)
 
 # Set up the Confusion Matrix
 confusionMatrix(data = as.factor(y_pred), reference = as.factor(logTest$outcome))
 
+# ROC
+roc_classifier  <- roc(logTest$outcome, prob_pred)
+plot(roc_classifier)
+plot(roc_classifier, add=TRUE, colour="grey10")
+legend(0, 0.5, legend=c("Model ROC"),
+       col=c("grey10", 1), lty=1)
 
+auc(roc_classifier)
 
+# Tests of Individual predictors: variable importance
+varImp(classifier)
 ```
-
-
-
-
 
 
 
