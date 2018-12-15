@@ -7,14 +7,21 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+library(klaR) ## masks select from dplyr
 library(dplyr)
 library(caTools)
-library(caret)
+library(caret) ## ML
 library(tidyverse)
-library(lubridate)
-library(Amelia) 
-library(stringr)
+library(lubridate) ## dates
+library(Amelia) ## missing values
+library(stringr) ## string processing
+library(FactoMineR)
+library(pROC)
+library(doParallel)
+```
+
+```{r}
+select <- dplyr::select ## klaR masking dplyr select 
 ```
 
 # Overview and Motivation:
@@ -54,112 +61,382 @@ We learned that we are able to develop a reasonable estimate with just first day
 
 ```{r}
 ##df <- read.csv(file='../data/260_1123cohort.csv',sep=',', header=TRUE, quote="\'", check.names = FALSE)
-load('data/hds_1213.Rda')
-
-#mat's file path
-#FIGURE OUT IF THERE's A WAY TO DYNAMICALLY GENERATE PATH BASED ON GIT.. worst case we can use a dropbox 
-#load('C:/Users/Samuel/Documents/fall18/260/finalproj1213/bst260/data/cohort_1204.Rda')
+load('../data/hds_1213.Rda')
 hds<-hds %>% unique() # make sure we dont have duplicates 
 ```
 
-time since last ICU admission (taking 1/number of days since the last icu stay. People who are in the ICU for the first time will get 0)
+Plot to obtain the missing values:
+```{r}
+# missmap(hds)
+```
+
+
+Time since last ICU admission (taking 1/number of days since the last icu stay. People who are in the ICU for the first time will get 0)
 We also remove patients with missing values for intime and outtime, because their ICU stay might just be an entry error.
+
 ```{r}
 subset_hds<- hds %>% select(subject_id, hadm_id, icustay_id, intime, outtime) %>%
-  arrange(subject_id, intime) %>% 
+  arrange(subject_id, intime) %>%  ## make sure that data are arrange correctly
   group_by(subject_id) %>% 
-  mutate(lag=lag(intime, 1)) %>%
-  mutate(difftime=difftime(intime, lag, units="days")) %>%
-  mutate(difftime=1/as.numeric(difftime)) %>%
-  mutate(difftime=ifelse(is.na(difftime),0,difftime)) %>%
-  mutate(isnaintime=ifelse(is.na(intime), 1, 0)) %>%
-  mutate(max=max(isnaintime))%>%
-  filter(max!=1)%>%
-  select(-c(subject_id, icustay_id, difftime))%>%
+  mutate(lag=lag(intime, 1),
+         difftime=difftime(intime, lag, units="days"),
+         difftime=1/as.numeric(difftime),
+         difftime=ifelse(is.na(difftime),0,difftime), ## if you have never been to the ICU you get 0 
+         isnaintime=ifelse(is.na(intime), 1, 0), ## eliminate people if they have missing intime at least once
+         max=max(isnaintime))%>%
+  filter(max!=1) %>%
+  select(subject_id, icustay_id, difftime) %>%
   ungroup()
   
 
-hds<-left_join(hds, subset_hds)
+hds2<-left_join(hds, subset_hds) ## merge/join with the whole dataset
+rm(subset_hds) ## remove this dataframe, we dont need it anymore 
 ```
 
-Remove people with missing gender
+Remove people with missing gender. 
 ```{r}
-hds<-hds %>% filter(!is.na(gender))
+hds2<-hds2 %>% filter(!is.na(gender))
 ```
 
 Remove all the columns with more than 20% of missing values 
 ```{r}
 threshold <- nrow(hds)*0.20
-hds <- hds[colSums(is.na(hds)) < threshold]
+hds <- hds2[colSums(is.na(hds2)) < threshold]
 ```
 
-remove patients who have missing values for the rest of the columns 
+Remove patients who have missing values for the rest of the columns 
 ```{r}
 hds <- hds[rowSums(is.na(hds)) < 1,]
 ```
 
-First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old. We also dummify gender and remove people with missing gender. These are errors. 
+First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old and bin age. We also dummify gender.
 
 ```{r}
 hds <- hds %>% filter(age>=18) %>% 
-  filter(gender)
   mutate(age = ifelse(age>89, 92, age),
-         gender=str
-         gender=ifelse(gender=='"F"', 1,0)) ## female is 1
+         gender=ifelse(gender=="F", 1,0),
+         age=cut(admission_age, 
+                 breaks=c(17, 28, 38, 48, 58, 68, 78, 88, Inf),
+                 labels=c("1","2","3","4","5","6","7", "8")))%>% 
+  mutate(age=as.numeric(age))%>% 
+  select(-admission_age)
 ```
 
+We can see the age distribution now
+```{r}
+ggplot(aes(x=age), data=hds)+
+  geom_histogram( colour="grey", stat="count")+
+  theme_bw()+
+  ggtitle("Age distribution after binning")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Gender distribution - 44 % are females
+```{r}
+summary(hds$gender) 
+```
+
+Let's see how many people die in the ICU - only around 8% 
+```{r}
+summary(hds$icustay_expire_flag) ## this is our outcome variable 
+```
+
+We can see that some of the urine output entry are negative. After consulting this issue with domain experts, we recode these values to positive. 
+```{r}
+summary(hds$urineoutput)
+```
+
+Urine output distribution
+```{r}
+ggplot(aes(x=urineoutput), data=hds)+
+  geom_histogram( colour="grey",binwidth = 100)+
+  theme_bw()+
+  ggtitle("Urine output distribution after cleaning")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(limits=c(0,6000)) ## there are some crazy values later 
+```
+
+
+```{r}
+hds<-hds %>% mutate(urineoutput=abs(urineoutput))%>%
+  filter(urineoutput<6001) ## urine output cant be more than this. We dont know if more is actually mistake
+## since we have many patients we can eliminate these people
+```
+
+
+```{r}
+
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'AMERICAN INDIAN', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'AMERICAN INDIAN/ALASKA', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE', 'NATIVE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE FEDERALLY RECOGNIZED TRIBE', 'NATIVE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - ASIAN INDIAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - CHINESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - CAMBODIAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - FILIPINO', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - JAPANESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - KOREAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - OTHER|ASIAN - THAI', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - VIETNAMESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/AFRICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/AFRICAN AMERICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/CAPE VERDEAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/HAITIAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK AMERICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'CARIBBEAN ISLAND|MULTI RACE ETHNICITY', 'OTHER') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - COLOMBIAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CUBAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - DOMINICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - GUATEMALAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - HONDURAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - MEXICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - PUERTO RICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - SALVADORAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'SOUTH AMERICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'WHITE - BRAZILIAN|WHITE - EASTERN EUROPEAN|WHITE - OTHER EUROPEAN|WHITE - RUSSIAN', 'WHITE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'PATIENT DECLINED TO ANSWER|UNABLE TO OBTAIN|UNKNOWN/NOT SPECIFIED' , 'NO_ANSWER') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)' , 'HISPANIC OR LATINO') 
+
+hds<-hds %>% 
+  mutate(ethnicity=case_when(ethnicity=="ASIAN"~1,
+                             ethnicity=="BLACK"~2,
+                             ethnicity=="HISPANIC OR LATINO"~3, 
+                             ethnicity=="HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)"~3, 
+                             ethnicity=="MIDDLE EASTERN" ~4,  
+                             ethnicity=="NATIVE"~ 5, 
+                             ethnicity=="NATIVE FEDERALLY RECOGNIZED TRIBE" ~ 5,
+                             ethnicity=="NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 6,
+                             ethnicity=="NO_ANSWER"~ 7, 
+                             ethnicity=="OTHER"~ 8, 
+                             ethnicity=="PORTUGUESE"~9,
+                             ethnicity=="WHITE"~10)) %>%
+  mutate(ethnicity=as.character(ethnicity))
+
+```
 
 Pre-processing categorical variable into 0vs1 columns and making dummies:
 ```{r}
-hds<-hds %>% 
-  mutate(gender=ifelse(gender=='"F"', 1,0),# 1 is female and 0 is male
-         first_icu_stay=ifelse(first_icu_stay==FALSE,0,1),
-         v=1, # needed to make dummies 
-         admission_type=paste("AdmissionType",admission_type,sep="_")) %>% 
-  mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1)) %>%
+hds<-hds %>% mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
+```
+
+Dummies
+```{r}
+hds<-hds %>% mutate(v=1,
+                    admission_type=paste("AdmissionType",admission_type,sep="_"),
+                    admission_location=paste("AdmissionLocation",admission_location,sep="_"),
+                    ethnicity=paste("Ethnicity", ethnicity, sep="_"))
+
+hds3<-hds %>% 
+  select(icustay_id, v, admission_type, admission_location, ethnicity) %>%
   spread(admission_type, v, fill = 0) %>%
-  filter(age>17) %>% ## leave only adults 
-  unique() %>% ## unique entries 
-  mutate(urineoutput=abs(urineoutput)) %>% ## we have negative values. I change them to positive
+  mutate(v=1)%>%
+  spread(admission_location, v, fill = 0)%>%
+  mutate(v=1)%>%
+  spread(ethnicity, v, fill = 0)
   
 ```
 
-
-
-
-
-This is the distribution of age now: 
-
+Check these variables. We can see that some of the have a very small variablity. The is not many ones. We delete this columns. 
 ```{r}
-plot1<- ggplot()+
-  geom_histogram(aes(x=age), data=hds, colour="grey")+
-  theme_bw()+
-  ggtitle("Age distribution")
-plot1
+summary(hds3)
 ```
 
 ```{r}
-plot2<- ggplot()+
-  geom_histogram(aes(x=as.character(age_score)), data=hds, colour="grey", stat="count")+
-  theme_bw()+
-  ggtitle("Age distribution")+
-  xlab("Age score")
-plot2
+Nzv<- nearZeroVar(hds3, saveMetrics = TRUE) ## this is a caret function
+Nzv<-Nzv[Nzv[,"zeroVar"] + Nzv[,"nzv"] > 0, ]
+NzvNames<-rownames(Nzv)
+NzvNames
 ```
 
-Older individuals above 90 are assigned to 7, for a more logical interpretation we assign these individuals to 12 to more accurately reflect the demographics. 
+```{r}
+hds3 <- hds3[!(names(hds3) %in% NzvNames)]
+
+hds<-left_join(hds3, hds)%>%
+  select(-c(admission_type, admission_location, ethnicity, v))
+```
+
+features to delete
+```{r}
+hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id",
+                         "admittime","religion","insurance","dischtime","diagnosis",
+                         "hospital_expire_flag","ICUSTAY_AGE_GROUP"))
+
+```
 
 ```{r}
-hds<- hds %>%
-  mutate(age_score=ifelse(age_score==7,12,age_score)) 
+# features that we don't want to standardize
+# we keep icustay_expire_flag because it is the target to predict
+
+not_to_standardize <- hds %>% 
+  select(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7, 
+         icustay_expire_flag)
+
+# features to standardize
+col_to_standardize <- hds %>% 
+  select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7,
+            icustay_expire_flag))
+```
 
 
-plot3<-hds %>%
-  ggplot()+
-  geom_histogram(aes(x=as.factor(age_score)), data=hds, colour="grey", stat="count")+
-  theme_bw()+
-  ggtitle("Age distribution")+
-  xlab("Age score")
-plot3
+Standardize data except icustay_id and icustay_expire_flag (target) and categorical features:
+```{r}
+preprocessParams <- preProcess(col_to_standardize, method=c("center", "scale"))
+transformed <- predict(preprocessParams, col_to_standardize)
+final <- cbind(transformed, not_to_standardize) %>% 
+  select(icustay_expire_flag, everything()) ## class variable first
+```
+
+PCA
+```{r}
+res.pca = PCA(final[,2:length(final)], scale.unit=TRUE, ncp=5, graph=T)
+```
+```{r}
+summary(res.pca)
+```
+
+Data split:
+```{r}
+final[,"icustay_expire_flag"] <- factor(final[,"icustay_expire_flag"])
+trainIndex <- createDataPartition(final$icustay_expire_flag, p=0.80, list=FALSE)
+dataTrain <- final[ trainIndex,]
+dataTest <- final[-trainIndex,]
+
+```
+
+Naive Bayes Classifier:
+```{r}
+# train a naive Bayes model
+fit <- NaiveBayes(icustay_expire_flag~., data=dataTrain)
+# make predictions
+predictions <- predict(fit, dataTest[,2:length(dataTest)])
+# summarize results
+confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
+```
+
+
+
+More models: 
+```{r}
+set.seed(262)
+up_train <- upSample(x = dataTrain[, -ncol(dataTrain)],
+                     y = dataTrain$icustay_expire_flag)                         
+table(up_train$Class)
+up_train<- up_train %>% select(-c(Class))
+```
+
+
+Train a random forest 
+
+```{r}
+
+up_train$icustay_expire_flag<- as.factor(up_train$icustay_expire_flag)
+levels(up_train$icustay_expire_flag) <- c("X0", "X1")
+
+dataTest$icustay_expire_flag<- as.factor(dataTest$icustay_expire_flag)
+levels(dataTest$icustay_expire_flag) <- c("X0", "X1")
+
+
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
+
+set.seed(7)
+randomforest<- train(icustay_expire_flag ~ ., 
+                 data = up_train, 
+                 method = "rf", 
+                 tuneLength = 20,
+                 metric="ROC",
+                 trControl=trainControl(method="cv",
+                           summaryFunction=twoClassSummary,
+                           number= 6,
+                           classProbs = TRUE))
+
+stopCluster(cl)
+
+print(randomforest)
+print(randomforest$finalModel)
+
+predictions<-predict.train(object=randomforest,dataTest,type="prob")
+
+predictions<-predict.train(object=randomforest,dataTest,type="raw")
+confusionMatrix(predictions,dataTest$icustay_expire_flag)
+roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions))
+auc(roc_obj)
+
+variableimportancerandomforest <- varImp(randomforest, scale = FALSE)
+variableimportancerandomforest
+
+```
+
+
+```{r}
+trainControl<-trainControl(method="repeatedcv",
+                           summaryFunction=twoClassSummary,
+                           number= 6, 
+                           repeats = 5, 
+                           classProbs = TRUE,
+                           search="random")
+
+# SVM 
+set.seed(7) 
+fit.svm <- train(icustay_expire_flag~., data=up_train, method="svmRadial", trControl=trainControl, tuneLength = 20)
+print(fit.svm)
+
+# KNN 
+set.seed(7) 
+fit.knn <- train(icustay_expire_flag ~., data=up_train, method="knn", tuneLength = 100, trControl=trainControl) 
+print(fit.knn)
+# Random Forest 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r, eval=F}
+# Fitting XGBoost to Training set
+classifier = xgboost(data = as.matrix(training_set[-51]), label = training_set$outcome, nrounds = 10)
+
+
+# Evaluating model performance with K-fold cross validation
+folds = createFolds(training_set$outcome, k = 10)
+cv = lapply(folds, function(x) {
+  training_fold = training_set[-x, ]
+  test_fold = training_set[x, ]
+  classifier = xgboost(data = as.matrix(training_set[-51]), label = training_set$outcome, nrounds = 10)
+  y_pred = predict(classifier, newdata = as.matrix(test_fold[-51]))
+  y_pred= (y_pred >= 0.5)
+  cm = table(test_fold[, 51], y_pred)
+  accuracy = (cm[1,1] + cm[2,2]) / (cm[1,1] + cm[2,2] + cm[1,2] + cm[2,1])
+  return(accuracy)
+})
+accuracy = mean(as.numeric(cv))
+
+
+```
+
+
+
+
+
+
+
+```{r}
+ggplot(x=)
 ```
 
