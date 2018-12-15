@@ -139,7 +139,7 @@ hds %>% select(POTASSIUM_min) %>%
   filter(POTASSIUM_min <=3.4) %>% 
   count(POTASSIUM_min)
 
-# POTASSIUM_MAX: This is important. Cut above 13.80. Min value is fine. 
+# POTASSIUM_MAX: This is important. Cut out anything above 13.80. Min value is fine. 
 #
 # References:
 # Same as above
