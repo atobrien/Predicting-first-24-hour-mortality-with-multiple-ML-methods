@@ -102,6 +102,9 @@ plot
 
 
 We create a flag for people who die within the first 24h in the ICU 
+```{r}
+hds <- hds %>% filter(died24H!=1)
+```
 
 ## Plot to obtain the missing values:
 ```{r}
@@ -239,18 +242,18 @@ hds$ethnicity <- str_replace_all(hds$ethnicity, 'PATIENT DECLINED TO ANSWER|UNAB
 hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)' , 'HISPANIC OR LATINO') 
 
 hds<-hds %>% 
-  mutate(ethnicity=case_when(ethnicity=="ASIAN"~1,
+  mutate(ethnicity=case_when(ethnicity=="ASIAN"~2,
                              ethnicity=="BLACK"~2,
-                             ethnicity=="HISPANIC OR LATINO"~3, 
-                             ethnicity=="HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)"~3, 
-                             ethnicity=="MIDDLE EASTERN" ~4,  
-                             ethnicity=="NATIVE"~ 4, 
-                             ethnicity=="NATIVE FEDERALLY RECOGNIZED TRIBE" ~ 4,
-                             ethnicity=="NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 4,
-                             ethnicity=="NO_ANSWER"~ 6, 
-                             ethnicity=="OTHER"~ 4, 
-                             ethnicity=="PORTUGUESE"~4,
-                             ethnicity=="WHITE"~5)) %>%
+                             ethnicity=="HISPANIC OR LATINO"~2, 
+                             ethnicity=="HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)"~2, 
+                             ethnicity=="MIDDLE EASTERN" ~ 2,  
+                             ethnicity=="NATIVE"~ 2, 
+                             ethnicity=="NATIVE FEDERALLY RECOGNIZED TRIBE" ~ 2,
+                             ethnicity=="NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 2,
+                             ethnicity=="NO_ANSWER"~ 3, 
+                             ethnicity=="OTHER"~ 2, 
+                             ethnicity=="PORTUGUESE"~2,
+                             ethnicity=="WHITE"~1)) %>%
   mutate(ethnicity=as.character(ethnicity))
 
 ```
@@ -576,9 +579,6 @@ hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id
                          "admittime","religion","insurance","dischtime","diagnosis",
                          "hospital_expire_flag","ICUSTAY_AGE_GROUP")) 
 
-hds<- hds %>% 
-  add_column(Ethnicity_7 = ifelse(hds$Ethnicity_2+hds$Ethnicity_5+hds$Ethnicity_6==0,1,0), .after = "Ethnicity_6")
-
 ```
 
 
@@ -590,12 +590,12 @@ hds<- hds %>%
 # we keep icustay_expire_flag because it is the target to predict
 
 not_to_standardize <- hds %>% 
-  select(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7, 
+  select(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_3, 
          icustay_expire_flag, died24H)
 
 # features to standardize
 col_to_standardize <- hds %>% 
-  select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_7,
+  select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_3,
             icustay_expire_flag, died24H))
 ```
 
