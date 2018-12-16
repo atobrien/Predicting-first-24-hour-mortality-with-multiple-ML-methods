@@ -1,0 +1,1105 @@
+---
+title: "Project - Predicting Mortality in ICU Patients"
+author: "Lucie Gillet, Maja Garbulinska, Anthony O'Brien, Mathew Samuel"
+date: "12/12/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install packages if you don't have it
+list.of.packages <- c("klaR", "caTools","caret","tidyverse","lubridate","Amelia","stringr","FactoMineR","pROC","doParallel","xgboost")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+#load packages
+library(klaR) ## masks select from dplyr
+library(dplyr)
+library(caTools)
+library(caret) ## ML
+library(tidyverse)
+library(lubridate) ## dates
+library(Amelia) ## missing values
+library(stringr) ## string processing
+library(FactoMineR)
+library(pROC)
+library(doParallel)
+library(xgboost)
+
+#select dplyr select currently being masked by dplyr
+select <- dplyr::select ## klaR masking dplyr select 
+```
+
+# Overview and Motivation:
+Provide an overview of the project goals and the motivation for it. Consider that this will be read by people who did not see your project proposal
+
+With the increasing proliferation of data, there continues to be a shift towards data-driven decision making, especially in the world of healthcare. The ICU represents a particularly interesting opportunity given the numerous data elements collected on patients to monitor their health at this critical juncture in their health. Currently, there are a variety of risk prediction scores that clinicians are able to utilize to gain some insight into the overall health of their patient in the aggregate. 
+
+For our project, we wanted to see if we could take advantage of the many data points collected and develop a mortality prediction model based on a patient's first day in the ICU, which remains a particularly important period in their hospital admission. Such a model would provide physicians with a data-driven, standardized approach to assess the overall health of their patient and also potentially inform clinical decision-making moving forward. For instance, though it may be heuristically clear at times which patients might need increased supervision, a robust and standardized score would provide for a systematic, process-driven method to help hospitals allocate resources on patients that require the most attention. 
+
+# Related Work: 
+Anything that inspired you, such as a paper, a web site, or something we discussed in class
+
+We were inspired by a paper written by our MIT course faculty on [Real-time mortality prediction in the Intensive Care Unit](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5977709/). We wanted to tackle a relevant and feasible problem given the scope of the class, so decided to modify the task to develop a mortality prediction based on first day measurements. 
+
+# Initial Questions: 
+What questions are you trying to answer? How did these questions evolve over the course of the project? What new questions did you consider in the course of your analysis?
+
+The main question we are trying to answer is as follows: can we accurately predict a patient's in-hospital mortality based on their first-day readings in the ICU? Over the course of our project, we also wondered if we could understand the impact of the first 24 hours in the ICU on longer-term patient mortality, though it's clear that as more time passes from the initial ICU stay to the time of death, there could be additional factors to take into account, a number of which do not have corresponding data. After working with the data, we also faced the challenge of dealing with patients who were admitted to the ICU at multiple time points, sometimes within the same hospital admission. 
+
+As we continued our analysis, we also wondered whether we should incorporate current scores that we aim to compare against in our model. In the end, we decided that these were acceptable to incorporate considering that these readings are automatically calculated for patients in the ICU and more importantly, these scores provided an effective proxy in helping us understand the nuance of clinical values in the absence of additional clinical expertise. If this model were to be implemented in the future, it would be important to incorporate some of the scores and buckets created in different scoring methods to accurately convey information on how 'good' or 'bad' certain values are. 
+
+In the course of our analysis, one of the greatest challenges we faced was thinking about how we would deal with missing data. While we did initially consider looking at various imputation methods, we decided to develop a parsimonious model with reasonable accuracy given the variety of challenges of imputation in a clinical setting after consulting various clinicians and given the time frame of the project.  
+
+# Data: 
+Source, scraping method, cleanup, etc
+
+For our Collaborative Data Science in Medicine class, the MIMIC database was hosted in Google Bigquery. We developed sql queries and then combined the dataframe into a temporary folder provisioned in bigquery, from which we imported the data into R with a connection. As we cannot provide account access and for the sake of reproducibility, we placed an extract of the query result in an Rda file to analyze going forward. 
+
+# Exploratory Analysis: 
+###What visualizations did you use to look at your data in different ways? What are the different statistical methods you considered? Justify the decisions you made, and show any major changes to your ideas. How did you reach these conclusions?
+
+We first used a variety of exploratory plots, including histograms and barplots to understand the distribution of our data to identify outliers, missing data and the shape of distributions to potentially inform further methods. At our core, our research question is a classification problem, so we decided to use logistic regression along with tree based methods, including first a simple decision tree, then a random forest and a gradient boosted tree.  
+
+# Final Analysis: What did you learn about the data? How did you answer the questions? How can you justify your answers?
+
+We learned that we are able to develop a reasonable estimate with just first day readings in the ICU, but need to incorporate additional complexity in order to effectively implement this algorithm in a clinical setting. [WRITE SOMETHING ABOUT HOW WE THOUGHT ABOUT TYPE I VS TYPE II ERROR]. As mentioned at the beginning, we sought to develop a decision support tool, and believe that our algorithm could be used to help clinicians better understand a patient's future prognosis. [COMPARED TO PREVIOUS OR CURRENTLY USED SCORES]. 
+
+```{r}
+##This is the script with credentials to grab the data from bigquery, we fetched the data 1000 rows at a time due to the challenges with the API (there is an issue log open with the developers it seems to try and resolve it, but this is a fix for now)
+#library("bigrquery")
+# Load configuration settings
+# project_id <- "hst-953-2018"
+# options(httr_oauth_cache=TRUE)
+# 
+# run_query <- function(query){
+#   data <- query_exec(query, project=project_id, use_legacy_sql = FALSE)
+#   return(data)
+# }
+# 
+# hds<-NULL
+# system.time(
+#   for(i in 1:65) {
+#     query_sql <- paste('SELECT * FROM `hst-953-2018.temp_n.hds_1213` LIMIT ',1000,' OFFSET ',1000*(i-1),sep='')
+#     hdsi <- run_query(query_sql)
+#     hds<-rbind(hds,hdsi)
+#     paste(1000*i,'records of data grabbed')
+#   })
+# 
+# save(hds,file="hds_1213.Rda")
+
+load('../data/hds_1213.Rda')
+hds<-hds %>% unique() # make sure we dont have duplicates 
+```
+
+
+We find that some people died before admission to the ICU. This is a mistake so we delete them from the dataset
+
+```{r}
+hds<- hds %>% 
+  mutate(deathdiff=difftime(deathtime,intime, unit="days"))%>% 
+  mutate(diedEver=ifelse(!is.na(deathtime), 1, 0))%>%
+  mutate(died24H=ifelse(!is.na(deathtime) & as.numeric(deathdiff)<=1, 1, 0))%>% 
+  filter(deathdiff>=0  | is.na(deathdiff))%>% 
+  select(-diedEver)
+## delete negative values - people who died before they were admitted - this is a mistake
+```
+
+
+```{r}
+plot<-hds %>% 
+  mutate(deathdiff=ceiling(deathdiff))%>% 
+  mutate(deathDAYS=ifelse(deathdiff<7, deathdiff, "7 or more"))%>% 
+  filter(!is.na(deathDAYS))%>% 
+  ggplot(data=.)+
+  geom_histogram(aes(x=deathDAYS), stat = "count", fill="navyblue", alpha=0.7)+
+  xlab("Days after ICU admission")+
+  ylab("Number of patients")+
+  ggtitle("Death time in days after ICU admission for patients who died")+
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_y_continuous(breaks=seq(0, 3000, 200))
+
+plot
+```
+
+
+
+We create a flag for people who die within the first 24h in the ICU 
+```{r}
+hds <- hds %>% filter(died24H!=1)
+```
+
+## Plot to obtain the missing values:
+```{r}
+# missmap(hds)
+```
+
+Time since last ICU admission (taking 1/number of days since the last icu stay. People who are in the ICU for the first time will get 0)
+We also remove patients with missing values for intime and outtime, because their ICU stay might just be an entry error.
+
+```{r}
+subset_hds<- hds %>% select(subject_id, hadm_id, icustay_id, intime, outtime) %>%
+  arrange(subject_id, intime) %>%  ## make sure that data are arrange correctly
+  group_by(subject_id) %>% 
+  mutate(lag=lag(intime, 1),
+         difftime=difftime(intime, lag, units="days"),
+         difftime=1/as.numeric(difftime),
+         difftime=ifelse(is.na(difftime),0,difftime), ## if you have never been to the ICU you get 0 
+         isnaintime=ifelse(is.na(intime), 1, 0), ## eliminate people if they have missing intime at least once
+         max=max(isnaintime))%>%
+  filter(max!=1) %>%
+  select(subject_id, icustay_id, difftime) %>%
+  ungroup()
+  
+
+hds2<-left_join(hds, subset_hds) ## merge/join with the whole dataset
+rm(subset_hds) ## remove this dataframe, we dont need it anymore 
+```
+
+## Remove people with missing gender. 
+```{r}
+hds2<-hds2 %>% filter(!is.na(gender))
+```
+
+## Remove all the columns with more than 20% of missing values 
+```{r}
+threshold <- nrow(hds)*0.20
+hds <- hds2[colSums(is.na(hds2)) < threshold]
+```
+
+## Remove patients who have missing values for the rest of the columns 
+```{r}
+hds <- hds[rowSums(is.na(hds)) < 1,]
+```
+
+First, we exclude all the patients who do not meet our inclusion criteria. Due to physiological differences, we exclude everyone who is under 18 years old and bin age. We also dummify gender.
+
+```{r}
+hds <- hds %>% filter(age>=18) %>% 
+  mutate(age = ifelse(age>89, 92, age),
+         gender=ifelse(gender=="F", 1,0),
+         age=cut(admission_age, 
+                 breaks=c(17, 28, 38, 48, 58, 68, 78, 88, Inf),
+                 labels=c("1","2","3","4","5","6","7", "8")))%>% 
+  mutate(age=as.numeric(age))%>% 
+  select(-admission_age)
+```
+
+We can see the age distribution now
+```{r}
+ggplot(aes(x=age), data=hds)+
+  geom_histogram( colour="grey", stat="count")+
+  theme_bw()+
+  ggtitle("Age distribution after binning")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Gender distribution - 44 % are females
+```{r}
+summary(hds$gender) 
+```
+
+Let's see how many people die in the ICU - only around 8% 
+```{r}
+summary(hds$icustay_expire_flag) ## this is our outcome variable 
+```
+
+We can see that some of the urine output entry are negative. After consulting this issue with domain experts, we recode these values to positive. 
+```{r}
+summary(hds$urineoutput)
+```
+
+## Urine output distribution
+```{r}
+ggplot(aes(x=urineoutput), data=hds)+
+  geom_histogram( colour="grey",binwidth = 100)+
+  theme_bw()+
+  ggtitle("Urine output distribution after cleaning")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(limits=c(0,6000)) ## there are some crazy values later 
+```
+
+```{r}
+hds<-hds %>% mutate(urineoutput=abs(urineoutput))%>%
+  filter(urineoutput<6001) ## urine output cant be more than this. We dont know if more is actually mistake
+## since we have many patients we can eliminate these people
+```
+
+## Reclassifying the ethnicity variable
+
+```{r}
+
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'AMERICAN INDIAN', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'AMERICAN INDIAN/ALASKA', 'NATIVE')
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE', 'NATIVE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'NATIVE/ALASKA NATIVE FEDERALLY RECOGNIZED TRIBE', 'NATIVE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - ASIAN INDIAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - CHINESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - CAMBODIAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - FILIPINO', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - JAPANESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - KOREAN', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - OTHER|ASIAN - THAI', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'ASIAN - VIETNAMESE', 'ASIAN') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/AFRICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/AFRICAN AMERICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/CAPE VERDEAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK/HAITIAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'BLACK AMERICAN', 'BLACK') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'CARIBBEAN ISLAND|MULTI RACE ETHNICITY', 'OTHER') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - COLOMBIAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CUBAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - DOMINICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - GUATEMALAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - HONDURAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - MEXICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - PUERTO RICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - SALVADORAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'SOUTH AMERICAN', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)', 'HISPANIC OR LATINO') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'WHITE - BRAZILIAN|WHITE - EASTERN EUROPEAN|WHITE - OTHER EUROPEAN|WHITE - RUSSIAN', 'WHITE') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'PATIENT DECLINED TO ANSWER|UNABLE TO OBTAIN|UNKNOWN/NOT SPECIFIED' , 'NO_ANSWER') 
+hds$ethnicity <- str_replace_all(hds$ethnicity, 'HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)' , 'HISPANIC OR LATINO') 
+
+hds<-hds %>% 
+  mutate(ethnicity=case_when(ethnicity=="ASIAN"~2,
+                             ethnicity=="BLACK"~2,
+                             ethnicity=="HISPANIC OR LATINO"~2, 
+                             ethnicity=="HISPANIC/LATINO - CENTRAL AMERICAN (OTHER)"~2, 
+                             ethnicity=="MIDDLE EASTERN" ~ 2,  
+                             ethnicity=="NATIVE"~ 2, 
+                             ethnicity=="NATIVE FEDERALLY RECOGNIZED TRIBE" ~ 2,
+                             ethnicity=="NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 2,
+                             ethnicity=="NO_ANSWER"~ 3, 
+                             ethnicity=="OTHER"~ 2, 
+                             ethnicity=="PORTUGUESE"~2,
+                             ethnicity=="WHITE"~1)) %>%
+  mutate(ethnicity=as.character(ethnicity))
+
+```
+
+## Pre-processing categorical variable into 0vs1 columns and making dummies:
+```{r}
+hds<-hds %>% mutate(first_icu_stay=ifelse(first_icu_stay==FALSE,0,1))
+```
+
+## Dummies
+```{r}
+hds<-hds %>% mutate(v=1,
+                    admission_type=paste("AdmissionType",admission_type,sep="_"),
+                    admission_location=paste("AdmissionLocation",admission_location,sep="_"),
+                    ethnicity=paste("Ethnicity", ethnicity, sep="_"))
+
+hds3<-hds %>% 
+  select(icustay_id, v, admission_type, admission_location, ethnicity) %>%
+  spread(admission_type, v, fill = 0) %>%
+  mutate(v=1)%>%
+  spread(admission_location, v, fill = 0)%>%
+  mutate(v=1)%>%
+  spread(ethnicity, v, fill = 0)
+  
+```
+
+Check these variables. We can see that some of the have a very small variablity. The is not many ones. We delete this columns. 
+```{r}
+summary(hds3)
+```
+
+```{r}
+Nzv<- nearZeroVar(hds3, saveMetrics = TRUE) ## this is a caret function
+Nzv<-Nzv[Nzv[,"zeroVar"] + Nzv[,"nzv"] > 0, ]
+NzvNames<-rownames(Nzv)
+NzvNames
+```
+
+```{r}
+hds3 <- hds3[!(names(hds3) %in% NzvNames)]
+
+hds<-left_join(hds3, hds)%>%
+  select(-c(admission_type, admission_location, ethnicity, v))
+```
+
+## Review of continuous paraclinical variables and vitals
+
+```{r}
+## Review of continuous clinical variables
+
+# ANIONGAP_min: Keep ANIONGAP_min as is, it appears normal
+summary(hds$ANIONGAP_min) 
+
+# ANIONGAP_max: Either cut off at 40 or leave as is
+#
+# References: 
+# 1. Grice, A.S. et al.Multiple acyl-CoA dehydrogenase deficiency: a rare cause of acidosis with an increased anion gap.British Journal of Anaesthesia , Volume 86 , Issue 3 , 437 - 441
+# 2. Bavakunji RV, Turner JD, Jujjavarapu S, et al. An unusual case of severe high anion gap metabolic acidosis. NDT Plus. 2011;4(2):90-2. 
+
+summary(hds$ANIONGAP_max) 
+hds %>% ggplot()+
+  geom_histogram(aes(ANIONGAP_max), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,59))
+
+# BICARBONATE_min: the MIN value in this is really low but possible. The max value is also possible. Keep as is.
+#
+# References: 
+# 1. Hiroyuki Arai et al. A Case of Poisoning by a Mixture of Methanol and Ethylene Glycol, The Tohoku Journal of Experimental Medicine, 1983, Volume 141, Issue 4, Pages 473-480, Released August 31, 2006, 
+# 2. Yessayan, L., Yee, J., Frinak, S., Kwon, D., & Szamosfalvi, B. (2015). Treatment of Severe Metabolic Alkalosis with Continuous Renal Replacement Therapy: Bicarbonate Kinetic Equations of Clinical Value. ASAIO journal, 61 4, e20-5.
+
+summary(hds$BICARBONATE_min)
+
+# BICARBONATE_max:keep as is
+#
+
+summary(hds$BICARBONATE_max)
+
+# CREATININE_min: keep as is
+#
+# References (pediatric but still applies given the max): 
+# 1. Vimal Master Sankar Raj, Jessica Garcia, and Roberto Gordillo, “17-Year-Old Boy with Renal Failure and the Highest Reported Creatinine in Pediatric Literature,” Case Reports in Pediatrics, vol. 2015, Article ID 703960, 4 pages, 2015. https://doi.org/10.1155/2015/703960.
+
+summary(hds$CREATININE_min)
+
+# CREATININE_max: keep as is 
+#
+# Reference: same as before
+
+summary(hds$CREATININE_max)
+
+# CHLORIDE_min: remove anything below 39, max is fine
+#
+
+summary(hds$CHLORIDE_min)
+hds %>% ggplot()+
+  geom_histogram(aes(CHLORIDE_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,142))
+hds %>% select(CHLORIDE_min) %>% 
+  filter(CHLORIDE_min <=75) %>% 
+  count(CHLORIDE_min)
+
+# CHLORIDE_max: keep as is 
+#
+# Reference:
+# 1. Graber ML, Quigg RJ, Stempsey WE, Weis S. Spurious hyperchloremia and decreased anion gap in hyperlipidemia. Ann Intern Med. 1983 May;98(5 Pt 1):607-9.
+
+summary(hds$CHLORIDE_max)
+
+# GLUCOSE_min: Remove anything below 20- the person is probably brain dead at that stage, Max reported is fine. 
+# 
+# References:
+# 1. Cryer PE. Hypoglycemia, functional brain failure, and brain death. J Clin Invest. 2007;117(4):868-70. 
+# 2. Honda, Yasuyuki et al. A case of successful treatment of a patient with hyperglycemia of 2700 mg/dL. The American Journal of Emergency Medicine , Volume 30 , Issue 1 , 254.e1 - 254.e2
+
+summary(hds$GLUCOSE_min)
+hds %>% ggplot()+
+  geom_histogram(aes(GLUCOSE_min), color="white", binwidth = 5)+
+  scale_x_continuous(limits=c(0,651))
+hds %>% select(GLUCOSE_min) %>% 
+  filter(GLUCOSE_min <=70) %>% 
+  count(GLUCOSE_min)
+
+# GLUCOSE_max: Keep as is 
+# 
+
+summary(hds$GLUCOSE_max)
+hds %>% ggplot()+
+  geom_histogram(aes(GLUCOSE_max), color="white", binwidth = 5)+
+  scale_x_continuous(limits=c(0,651))
+hds %>% select(GLUCOSE_max) %>% 
+  filter(GLUCOSE_max >=198) %>% 
+  count(GLUCOSE_max)
+
+# HEMATOCRIT_min: keep as is
+#
+
+# References: 
+# 1. M.K. Viele MD. R.B. Weiskopf.1.What canwelearn about the needfortransfusionfrompatientswho refuse blood? The experience with Jehovah’s Witnesses.May 1994 https://doi.org/10.1046/j.1537-2995.1994.34594249050.x
+
+summary(hds$HEMATOCRIT_min)
+hds %>% ggplot()+
+  geom_histogram(aes(HEMATOCRIT_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,67))
+hds %>% select(HEMATOCRIT_min) %>% 
+  filter(HEMATOCRIT_min <=25.5) %>% 
+  count(HEMATOCRIT_min)
+
+# HEMATOCRIT_max: keep as is
+#
+
+summary(hds$HEMATOCRIT_max)
+hds %>% select(HEMATOCRIT_max) %>% 
+  filter(HEMATOCRIT_max >=39.40) %>% 
+  count(HEMATOCRIT_max)
+
+# Hemoglobin: these should match the values of hematocrite/3 so keep both as is
+#
+
+summary(hds$HEMOGLOBIN_min)
+summary(hds$HEMOGLOBIN_max)
+
+# PLATELET_min: keep as is (Just in case that these values are value*10^3, eg. 100X10^3) 
+#
+# Reference: 
+# 1. Anthony M. H. HoJoseph C. H. WooJohn G. KeltonLawrence Chiu. Spurious hyperkalaemia associated with severe thrombocytosis and leukocytosis.Can J Anaesth (1991) 38: 613. https://doi.org/10.1007/BF03008197
+# 2. https://www.researchgate.net/post/what_is_the_minimum_platelet_count_ever_reported_in_a_patient_not_having_bleeding_complications
+
+summary(hds$PLATELET_min)
+hds %>% ggplot()+
+  geom_histogram(aes(PLATELET_min), color="white", binwidth = 10)+
+  scale_x_continuous(limits=c(0,1629))
+hds %>% select(PLATELET_min) %>% 
+  filter(PLATELET_min <=136) %>% 
+  count(PLATELET_min)
+
+# PLATELET_min: keep as is they are high but it seems plausible
+#
+summary(hds$PLATELET_max)
+hds %>% ggplot()+
+  geom_histogram(aes(PLATELET_max), color="white", binwidth = 10)+
+  scale_x_continuous(limits=c(0,2292))
+hds %>% select(PLATELET_max) %>% 
+  filter(PLATELET_max >=303) %>% 
+  count(PLATELET_max)
+
+# POTASSIUM_MIN: Keep as is, or we can cut at 0.9 mmol/L (wouldnt make a difference). 
+#
+# References:
+# 1. ten Bos L, Veenstra T, Westerhof B et al. A case of extreme hypokalemia. Netherlands J of Medicine 2016; 74: 406-409 
+# 2. Tran H. Extreme hyperkalemia. South Med J 2005; 98: 729-32 
+
+summary(hds$POTASSIUM_min)
+hds %>% ggplot()+
+  geom_histogram(aes(POTASSIUM_min), color="white", binwidth = 0.1)+
+  scale_x_continuous(limits=c(0,8.1))
+hds %>% select(POTASSIUM_min) %>% 
+  filter(POTASSIUM_min <=3.4) %>% 
+  count(POTASSIUM_min)
+
+# POTASSIUM_MAX: This is important. Cut out anything above 13.80. Min value is fine. 
+#
+# References:
+# Same as above
+
+summary(hds$POTASSIUM_max)
+hds %>% ggplot()+
+  geom_histogram(aes(POTASSIUM_max), color="white", binwidth = 0.1)+
+  scale_x_continuous(limits=c(0,27.5))
+hds %>% select(POTASSIUM_max) %>% 
+  filter(POTASSIUM_max >=5) %>% 
+  count(POTASSIUM_max)
+
+# SODIUM_MIN: A) cut below 99 or B) cut below 74.  Max here is fine
+#
+# Reference:
+# Gupta E, Kunjal R, Cury J. Severe hyponatremia due to valproic acid toxicity. J Clinical Medicine Research 2015; 7: 717-19
+
+summary(hds$SODIUM_min)
+hds %>% ggplot()+
+  geom_histogram(aes(SODIUM_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,178))
+hds %>% select(SODIUM_min) %>% 
+  filter(SODIUM_min <=134) %>% 
+  count(SODIUM_min)
+
+# SODIUM_MAXl Keep as is
+#
+
+summary(hds$SODIUM_max)
+
+# BUN_min: Keep as is. It's incredibly high (higher than highest reported in literature) but it's possible
+#
+# Reference:
+# 1. 17-Year-Old Boy with Renal Failure and the Highest Reported Creatinine in Pediatric Literature
+
+summary(hds$BUN_min)
+hds %>% ggplot()+
+  geom_histogram(aes(BUN_min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,254))
+hds %>% select(BUN_min) %>% 
+  filter(BUN_min >38) %>% 
+  count(BUN_min)
+
+# BUN_max: keep as is. same as before
+#
+
+summary(hds$BUN_max)
+
+# WBC_min: keep as is, both are possible in severe immunodeficiency and in Chronic Myeloid Leukemia
+#
+summary(hds$WBC_min)
+
+# WBC_max: keep as is, same.
+#
+summary(hds$WBC_max)
+
+## All of the vitals  suffer from the same problem that they could have been recorded at time of death or during death so they will be low 
+
+# HeartRate_Min: Keep as is. This is very difficult because it can be that the patient is dieing and the HR was recorded at that moment (their last heart beat?). (or remove 0.35)
+#
+# Reference:
+
+summary(hds$HeartRate_Min)
+hds %>% ggplot()+
+  geom_histogram(aes(HeartRate_Min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,143))
+hds %>% select(HeartRate_Min) %>% 
+  filter(HeartRate_Min <61) %>% 
+  count(HeartRate_Min)
+
+# HeartRate_Max: Keep as is
+
+summary(hds$HeartRate_Max)
+
+#SysBP_Min: Keep as is
+
+summary(hds$SysBP_Min)
+hds %>% ggplot()+
+  geom_histogram(aes(SysBP_Min), color="white", binwidth = 1)+
+  scale_x_continuous(limits=c(0,181))
+hds %>% select(SysBP_Min) %>% 
+  filter(SysBP_Min <82) %>% 
+  count(SysBP_Min)
+
+#SysBP_Max: Keep as is
+summary(hds$SysBP_Max)
+
+#DiasBP_Min: Keep as is
+summary(hds$DiasBP_Min)
+
+#DiasBP_Max: very high but keep as is could be anything like post-stroke dysautonomia etc
+
+summary(hds$DiasBP_Max)
+hds %>% select(DiasBP_Max) %>% 
+  filter(DiasBP_Max >92) %>% 
+  count(DiasBP_Max)
+
+# RespRate_Min: Keep as is
+
+summary(hds$RespRate_Min)
+
+# RespRate_Max: keep as is- very high but possible
+
+summary(hds$RespRate_Max)
+hds %>% select(RespRate_Max) %>% 
+  filter(RespRate_Max >15) %>% 
+  count(RespRate_Max)
+```
+
+After exploring the different lab values, we remove patients for which their values are implausible based on existing literature. More research will need to be done to reconcile these values, and 
+
+```{r}
+dim(hds %>% filter((ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8|SODIUM_min<=74)))
+#there are 144 patients that have clinically hard to believe lab values
+
+hds <- hds %>% filter(!(ANIONGAP_max>40|CHLORIDE_min<39|GLUCOSE_min<20|POTASSIUM_max>13.8|SODIUM_min<=74))
+```
+
+
+## Deleted features
+```{r}
+hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id","hadm_id","icustay_id",
+                         "admittime","religion","insurance","dischtime","diagnosis",
+                         "hospital_expire_flag","ICUSTAY_AGE_GROUP")) 
+
+```
+
+
+
+
+
+```{r}
+# features that we don't want to standardize
+# we keep icustay_expire_flag because it is the target to predict
+
+not_to_standardize <- hds %>% 
+  select(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_3, 
+         icustay_expire_flag, died24H)
+
+# features to standardize
+col_to_standardize <- hds %>% 
+  select(-c(gender, first_icu_stay, AdmissionType_ELECTIVE:Ethnicity_3,
+            icustay_expire_flag, died24H))
+```
+
+Standardize data except icustay_id and icustay_expire_flag (target) and categorical features:
+```{r}
+preprocessParams <- preProcess(col_to_standardize, method=c("center", "scale"))
+transformed <- predict(preprocessParams, col_to_standardize)
+final <- cbind(transformed, not_to_standardize) %>% 
+  select(icustay_expire_flag, everything()) ## class variable first
+```
+
+## PCA
+```{r}
+res.pca = PCA(final[,2:length(final)], scale.unit=TRUE, ncp=5, graph=T)
+```
+```{r}
+summary(res.pca)
+```
+
+
+```{r}
+final %>% select(-died24H) -> final
+```
+
+## Data split:
+```{r}
+final[,"icustay_expire_flag"] <- factor(final[,"icustay_expire_flag"])
+trainIndex <- createDataPartition(final$icustay_expire_flag, p=0.80, list=FALSE)
+dataTrain <- final[ trainIndex,]
+dataTrain <- dataTrain %>%  mutate(lastcolumn=1)
+dataTest <- final[-trainIndex,]
+
+```
+
+# Models
+
+## Create up-sampled and down-sampled datasets: 
+```{r}
+set.seed(262)
+#upsample
+up_train <- upSample(x = dataTrain[, -ncol(dataTrain)],
+                     y = dataTrain$icustay_expire_flag)                         
+table(up_train$Class)
+up_train<- up_train %>% select(-c(Class))
+
+#downsample
+down_train <- downSample(x = dataTrain[, -ncol(dataTrain)],
+                     y = dataTrain$icustay_expire_flag)
+table(down_train$Class)
+down_train<- down_train %>% select(-c(Class))
+
+dataTrain <- dataTrain %>% select(-lastcolumn)
+```
+
+##Naive Bayes Classifier Downsampled:
+```{r warning=FALSE}
+# train a naive Bayes model
+fitNaiveDown <- NaiveBayes(icustay_expire_flag~., data=down_train)
+# make predictions
+predictions <- predict(fitNaiveDown, dataTest[,2:length(dataTest)])
+# summarize results
+confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
+
+roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions$class))
+auc(roc_obj)
+
+save(fitNaiveDown, file="fitNaiveDown.Rda")
+
+## for graphs
+pred.naive<-predictions$posterior
+pred.naive<-as.data.frame(pred.naive) %>% select(2)
+pred.naive<-data.frame(pred.naive) %>% mutate(Model="Naive Bayes")
+
+x<-dataTest %>%
+  select(icustay_expire_flag) 
+
+pred.naive<-bind_cols(pred.naive, x)
+```
+
+## Naive Bayes Classifier Normal:
+```{r warning=FALSE}
+# train a naive Bayes model
+fitNaiveNormal <- NaiveBayes(icustay_expire_flag~., data=dataTrain)
+# make predictions
+predictions <- predict(fitNaiveNormal, dataTest[,2:length(dataTest)])
+# summarize results
+confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
+
+roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions$class))
+auc(roc_obj)
+save(fitNaiveNormal, file="fitNaiveNormal.Rda")
+```
+
+## Change outcome to factor for additional models to work
+```{r}
+#change variables and levels of flags
+up_train$icustay_expire_flag<- as.factor(up_train$icustay_expire_flag)
+down_train$icustay_expire_flag<- as.factor(down_train$icustay_expire_flag)
+dataTest$icustay_expire_flag<- as.factor(dataTest$icustay_expire_flag)
+dataTrain$icustay_expire_flag<- as.factor(dataTrain$icustay_expire_flag)
+
+levels(up_train$icustay_expire_flag) <- c("X0", "X1")
+levels(down_train$icustay_expire_flag) <- c("X0", "X1")
+levels(dataTrain$icustay_expire_flag) <- c("X0", "X1")
+levels(dataTest$icustay_expire_flag) <- c("X0", "X1")
+```
+
+
+## Parallelized Random Forest on balanced, downsampled data
+```{r eval=FALSE}
+# commenting out the random forest on the normal or upsampled data because it takes more than 10 hours even while parallelized..
+# cl <- makePSOCKcluster(4)
+# registerDoParallel(cl)
+# 
+# set.seed(7)
+# randomforest<- train(icustay_expire_flag ~ .,
+#                  data = down_train,
+#                  method = "rf",
+#                  tuneLength = 20,
+#                  metric="ROC",
+#                  trControl=trainControl(method="cv",
+#                            summaryFunction=twoClassSummary,
+#                            number= 6,
+#                            classProbs = TRUE))
+# 
+# stopCluster(cl)
+```
+
+```{r}
+load("downsampleRF.Rda")
+randomforest<-downsampleRF
+
+print(randomforest)
+
+predictions<-predict.train(object=randomforest,dataTest,type="prob")
+
+predictions<-predict.train(object=randomforest,dataTest,type="raw")
+confusionMatrix(predictions,dataTest$icustay_expire_flag)
+roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions))
+auc(roc_obj)
+
+variableimportancerandomforest <- varImp(randomforest, scale = FALSE)
+variableimportancerandomforest
+
+## for graphs
+pred.rf<-predict.train(object=downsampleRF,dataTest,type="prob")%>% 
+  bind_cols(dataTest)%>%
+  select(X1, icustay_expire_flag)%>%
+  mutate(Model="Random Forest")
+```
+
+## SVM on balanced, downsampled data
+```{r eval=F}
+# SVM downsampled data
+#set.seed(7) 
+#fit.svm_down <- train(icustay_expire_flag~., 
+#                 data=down_train,
+#                 method="svmRadial",
+#                 trControl=trainControl(method="repeatedcv",
+#                                        summaryFunction=twoClassSummary, 
+#                                        number= 6,  
+#                                        repeats = 5,  
+#                                        classProbs = TRUE,
+#                                        search="random"), 
+#                 tuneLength = 20)
+```
+
+```{r}
+load("fit.svm.down.Rda")
+print(fit.svm_down)
+
+predictions_svm_down<-predict.train(object=fit.svm_down,dataTest,type="raw")
+
+confusionMatrix(predictions_svm_down,dataTest$icustay_expire_flag)
+roc_svm_down <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_svm_down))
+auc(roc_svm_down)
+
+save(fit.svm_down, file="fit.svm.down.Rda")
+
+pred.svm_down<-predict.train(object=fit.svm_down,dataTest,type="prob")%>% 
+  bind_cols(dataTest)%>%
+  select(X1, icustay_expire_flag)%>%
+  mutate(Model="Support Vector Machine")
+```
+
+
+```{r, eval=F}
+# SVM normal dataset
+set.seed(7) 
+fit.svm_normal <- train(icustay_expire_flag~., 
+                 data=dataTrain,
+                 method="svmRadial",
+                 trControl=trainControl(method="repeatedcv",
+                                        summaryFunction=twoClassSummary, 
+                                        number= 6,  
+                                        repeats = 5,  
+                                        classProbs = TRUE,
+                                        search="random"), 
+                 tuneLength = 20)
+print(fit.svm_normal)
+
+predictions_svm_normal<-predict.train(object=fit.svm_normal,dataTest,type="raw")
+
+confusionMatrix(predictions_svm_normal,dataTest$icustay_expire_flag)
+roc_svm_normal <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_svm_normal))
+auc(roc_svm_normal)
+
+save(fit.svm_normal, file="fit.svm.normal.Rda")
+
+pred.svm_normal<-predict.train(object=fit.svm_normal,dataTest,type="prob")%>% 
+  bind_cols(dataTest)%>%
+  select(X1, icustay_expire_flag)%>%
+  mutate(Model="Support Vector Machine")
+```
+
+## Logistic regression on balanced, downsampled data
+
+```{r}
+# run logistic regression on downsample
+set.seed(7) 
+fit.logisticregression <- train(icustay_expire_flag~., 
+                 data=down_train,
+                 method="glm",
+                 trControl=trainControl(method="repeatedcv",
+                                        summaryFunction=twoClassSummary, 
+                                        number= 6,  
+                                        repeats = 5,  
+                                        classProbs = TRUE,
+                                        search="random"), 
+                 tuneLength = 20)
+print(fit.logisticregression)
+#prediction on test dataset
+predictions_glm_down<-predict.train(object=fit.logisticregression,dataTest,type="raw")
+
+confusionMatrix(predictions_glm_down,dataTest$icustay_expire_flag)
+roc_glm_down <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_glm_down))
+auc(roc_glm_down)
+
+
+pred.lr<-predict.train(object=fit.logisticregression,dataTest,type="prob")%>% 
+  bind_cols(dataTest)%>%
+  select(X1, icustay_expire_flag)%>%
+  mutate(Model="Logistic Regression")
+```
+
+## Logistic regression on balanced, upsampled data
+```{r eval=FALSE}
+# on the uptrain
+set.seed(7) 
+fit.logisticregression_up <- train(icustay_expire_flag~., 
+                 data=up_train,
+                 method="glm",
+                 trControl=trainControl(method="repeatedcv",
+                                        summaryFunction=twoClassSummary, 
+                                        number= 6,  
+                                        repeats = 5,  
+                                        classProbs = TRUE,
+                                        search="random"), 
+                 tuneLength = 20)
+print(fit.logisticregression_up)
+# prediction on test dataset
+predictions_glm_up<-predict.train(object=fit.logisticregression_up,dataTest,type="raw")
+
+confusionMatrix(predictions_glm_up,dataTest$icustay_expire_flag)
+roc_glm_up <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_glm_up))
+auc(roc_glm_up)
+```
+
+## Logistic regression on unbalanced data
+```{r eval=FALSE}
+# on the normal/unbalanced dataset
+set.seed(7) 
+fit.logisticregression_normal <- train(icustay_expire_flag~., 
+                 data=dataTrain,
+                 method="glm",
+                 trControl=trainControl(method="repeatedcv",
+                                        summaryFunction=twoClassSummary, 
+                                        number= 6,  
+                                        repeats = 5,  
+                                        classProbs = TRUE,
+                                        search="random"), 
+                 tuneLength = 20)
+print(fit.logisticregression_normal)
+#prediction on test data
+predictions_glm_normal<-predict.train(object=fit.logisticregression_normal,dataTest,type="raw")
+
+confusionMatrix(predictions_glm_normal,dataTest$icustay_expire_flag)
+roc_glm_normal <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_glm_normal))
+auc(roc_glm_normal)
+```
+
+
+## Gradient boosting with cross-validation on the unbalanced data
+```{r eval=FALSE}
+start.time <- Sys.time()
+# Normal data
+
+# Create dataframe for xgboost
+xgTrain<-dataTrain %>% 
+  mutate(outcome=icustay_expire_flag) %>%
+  mutate(outcome=as.factor(icustay_expire_flag)) %>%
+  select(-c(icustay_expire_flag)) 
+
+levels(xgTrain$outcome) <- c("first_class", "second_class")
+
+xgTest<-dataTest %>%  
+  mutate(outcome=icustay_expire_flag) %>%
+  mutate(outcome=as.factor(icustay_expire_flag)) %>%
+  select(-c(icustay_expire_flag)) 
+
+levels(xgTest$outcome) <- c("first_class", "second_class")
+
+# # Control parameters
+# ControlParamteres <- trainControl(method = "cv",
+#                                   number = 6,
+#                                   savePredictions = TRUE,
+#                                   classProbs = TRUE)
+# 
+# # Model Parameters Grid
+# parametersGrid <-  expand.grid(eta = 0.1, 
+#                             colsample_bytree=c(0.5,0.7),
+#                             max_depth=c(3,6),
+#                             nrounds=100,
+#                             gamma=1,
+#                             min_child_weight=2,
+#                             subsample=c(0.5, 0.8)
+#                             )
+# 
+# # 6-fold Cross-validation and Model Tuning
+# modelxgboost_normal_train <- train(outcome~., 
+#                   data = xgTrain,
+#                   method = "xgbTree",
+#                   trControl = ControlParamteres,
+#                   tuneGrid=parametersGrid)
+
+# Use the above results from the modelxgboost_down_train to get the best parameters for the training model
+
+
+# Control parameters
+ControlParamteres <- trainControl(method = "cv",
+                                  number = 6,
+                                  savePredictions = TRUE,
+                                  classProbs = TRUE)
+
+# Selected Model Parameters 
+parametersGrid <-  expand.grid(eta = 0.1, 
+                               colsample_bytree=c(0.7),
+                               max_depth=c(3),
+                               nrounds=100,
+                               gamma=1,
+                               min_child_weight=2,
+                               subsample=c(0.5)
+)
+
+# 6-fold Cross-validation and Model Tuning
+modelxgboost_normal_train <- train(outcome~., 
+                                   data = xgTrain,
+                                   method = "xgbTree",
+                                   trControl = ControlParamteres,
+                                   tuneGrid=parametersGrid)
+
+# Fit trained model to test data
+predictions<-predict(modelxgboost_normal_train,xgTest)
+
+# Confusion matrix
+confusionMatrix(predictions,xgTest$outcome)
+
+
+# ROC
+roc_classifier  <- roc(xgTest$outcome, as.numeric(predictions))
+plot(roc_classifier)
+plot(roc_classifier, add=TRUE, colour="grey10")
+legend(0, 0.5, legend=c("Model ROC"),
+       col=c("grey10", 1), lty=1)
+
+auc(roc_classifier)
+
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+```
+
+
+## Gradient boosting with cross-validation on the balanced, downsample data
+```{r}
+start.time <- Sys.time()
+# Under sample data
+
+# Create dataframe for xgboost
+xgTrain<-down_train %>% 
+  mutate(outcome=icustay_expire_flag) %>%
+  mutate(outcome=as.factor(icustay_expire_flag)) %>%
+  select(-c(icustay_expire_flag)) 
+
+levels(xgTrain$outcome) <- c("X0", "X1")
+
+xgTest<-dataTest %>%  
+  mutate(outcome=icustay_expire_flag) %>%
+  mutate(outcome=as.factor(icustay_expire_flag)) %>%
+  select(-c(icustay_expire_flag)) 
+
+levels(xgTest$outcome) <- c("X0", "X1")
+
+# # Control parameters
+# ControlParamteres <- trainControl(method = "cv",
+#                                   number = 6,
+#                                   savePredictions = TRUE,
+#                                   classProbs = TRUE)
+# 
+# # Model Parameters Grid
+# parametersGrid <-  expand.grid(eta = 0.1, 
+#                             colsample_bytree=c(0.5,0.7),
+#                             max_depth=c(3,6),
+#                             nrounds=100,
+#                             gamma=1,
+#                             min_child_weight=2,
+#                             subsample=c(0.5, 0.8)
+#                             )
+# 
+# # 6-fold Cross-validation and Model Tuning
+# 
+# modelxgboost_down_train <- train(outcome~., 
+#                   data = xgTrain,
+#                   method = "xgbTree",
+#                   trControl = ControlParamteres,
+#                   tuneGrid=parametersGrid)
+
+# Use the above results from the modelxgboost_down_train to get the best parameters for the training model
+
+
+## Training model with best trained data
+
+# Control parameters
+ControlParamteres <- trainControl(method = "cv",
+                                  number = 6,
+                                  savePredictions = TRUE,
+                                  classProbs = TRUE)
+
+# Selected Model Parameters 
+parametersGrid <-  expand.grid(eta = 0.1, 
+                               colsample_bytree=c(0.8),
+                               max_depth=c(6),
+                               nrounds=100,
+                               gamma=1,
+                               min_child_weight=2,
+                               subsample=c(0.5)
+)
+
+# 6-fold Cross-validation and Model Tuning
+modelxgboost_down_train <- train(outcome~., 
+                                 data = xgTrain,
+                                 method = "xgbTree",
+                                 trControl = ControlParamteres,
+                                 tuneGrid=parametersGrid)
+
+# Fit trained model to test data
+predictions<-predict(modelxgboost_down_train,xgTest)
+
+
+
+# Confusion matrix
+confusionMatrix(predictions,xgTest$outcome)
+
+
+
+# ROC
+roc_classifier  <- roc(xgTest$outcome, as.numeric(predictions))
+auc(roc_classifier)
+
+
+
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+
+
+
+pred.egb<-predict.train(object=modelxgboost_down_train,dataTest,type="prob")%>% 
+  bind_cols(dataTest)%>%
+  select(X1, icustay_expire_flag)%>%
+  mutate(Model="Extreme Gradient Boost")
+
+```
