@@ -772,32 +772,63 @@ pred.rf<-predict.train(object=downsampleRF,dataTest,type="prob")%>%
 
 ## SVM on balanced, downsampled data
 ```{r}
-# SVM 
+# SVM downsampled data
 set.seed(7) 
-fit.svm <- train(icustay_expire_flag~., 
+fit.svm_down <- train(icustay_expire_flag~., 
                  data=down_train,
                  method="svmRadial",
-                 trControl=trainControl(method="cv",
+                 trControl=trainControl(method="repeatedcv",
                                         summaryFunction=twoClassSummary, 
                                         number= 6,  
+                                        repeats = 5,  
                                         classProbs = TRUE,
                                         search="random"), 
-                 tuneLength = 5)
-print(fit.svm)
+                 tuneLength = 20)
+print(fit.svm_down)
 
-predictions<-predict.train(object=fit.svm,dataTest,type="raw")
-confusionMatrix(predictions,dataTest$icustay_expire_flag)
-roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions))
-auc(roc_obj)
+predictions_svm_down<-predict.train(object=fit.svm_down,dataTest,type="raw")
 
-save(fit.svm, file="fit.svm.Rda")
+confusionMatrix(predictions_svm_down,dataTest$icustay_expire_flag)
+roc_svm_down <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_svm_down))
+auc(roc_svm_down)
 
-pred.svm<-predict.train(object=fit.svm,dataTest,type="prob")%>% 
+save(fit.svm, file="fit.svm.down.Rda")
+
+pred.svm_down<-predict.train(object=fit.svm_down,dataTest,type="prob")%>% 
   bind_cols(dataTest)%>%
   select(X1, icustay_expire_flag)%>%
   mutate(Model="Support Vector Machine")
 ```
 
+
+```{r}
+# SVM normal dataset
+set.seed(7) 
+fit.svm_normal <- train(icustay_expire_flag~., 
+                 data=dataTrain,
+                 method="svmRadial",
+                 trControl=trainControl(method="repeatedcv",
+                                        summaryFunction=twoClassSummary, 
+                                        number= 6,  
+                                        repeats = 5,  
+                                        classProbs = TRUE,
+                                        search="random"), 
+                 tuneLength = 20)
+print(fit.svm_normal)
+
+predictions_svm_normal<-predict.train(object=fit.svm_normal,dataTest,type="raw")
+
+confusionMatrix(predictions_svm_normal,dataTest$icustay_expire_flag)
+roc_svm_normal <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_svm_normal))
+auc(roc_svm_normal)
+
+save(fit.svm_normal, file="fit.svm.normal.Rda")
+
+pred.svm_normal<-predict.train(object=fit.svm_normal,dataTest,type="prob")%>% 
+  bind_cols(dataTest)%>%
+  select(X1, icustay_expire_flag)%>%
+  mutate(Model="Support Vector Machine")
+```
 
 ## Logistic regression on balanced, downsampled data
 
