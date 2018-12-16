@@ -792,7 +792,7 @@ confusionMatrix(predictions_svm_down,dataTest$icustay_expire_flag)
 roc_svm_down <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_svm_down))
 auc(roc_svm_down)
 
-save(fit.svm, file="fit.svm.down.Rda")
+save(fit.svm_down, file="fit.svm.down.Rda")
 
 pred.svm_down<-predict.train(object=fit.svm_down,dataTest,type="prob")%>% 
   bind_cols(dataTest)%>%
