@@ -2,15 +2,21 @@
 title: "Project - Predicting Mortality in ICU Patients"
 author: "Lucie Gillet, Maja Garbulinska, Anthony O'Brien, Mathew Samuel"
 date: "12/12/2018"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+# This is a function to install the required packages if you do not already have them installed. 
+# Uncomment and run before knitting. 
+
 #install packages if you don't have it
-list.of.packages <- c("klaR", "caTools","caret","tidyverse","lubridate","Amelia","stringr","FactoMineR","pROC","doParallel","xgboost")
-new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
+#list.of.packages <- c("klaR", "caTools","caret","tidyverse","lubridate","Amelia","stringr","FactoMineR","pROC","doParallel","xgboost","ggExtra", "ggthemes")
+#new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+#if(length(new.packages)) install.packages(new.packages)
 
 #load packages
 library(klaR) ## masks select from dplyr
@@ -25,15 +31,18 @@ library(FactoMineR)
 library(pROC)
 library(doParallel)
 library(xgboost)
+library(ggExtra)
+library(ggthemes)
 
 #select dplyr select currently being masked by dplyr
 select <- dplyr::select ## klaR masking dplyr select 
 ```
 
+
 # Overview and Motivation:
 Provide an overview of the project goals and the motivation for it. Consider that this will be read by people who did not see your project proposal
 
-With the increasing proliferation of data, there continues to be a shift towards data-driven decision making, especially in the world of healthcare. The ICU represents a particularly interesting opportunity given the numerous data elements collected on patients to monitor their health at this critical juncture in their health. Currently, there are a variety of risk prediction scores that clinicians are able to utilize to gain some insight into the overall health of their patient in the aggregate. 
+With the increasing proliferation of data, there continues to be a shift towards data-driven decision making, especially in the world of healthcare. The ICU represents a particularly interesting opportunity given the numerous data elements collected on patients to monitor their health at this critical juncture. Currently, there are a variety of risk prediction scores that clinicians are able to utilize to gain some insight into the overall health of their patient in the aggregate. 
 
 For our project, we wanted to see if we could take advantage of the many data points collected and develop a mortality prediction model based on a patient's first day in the ICU, which remains a particularly important period in their hospital admission. Such a model would provide physicians with a data-driven, standardized approach to assess the overall health of their patient and also potentially inform clinical decision-making moving forward. For instance, though it may be heuristically clear at times which patients might need increased supervision, a robust and standardized score would provide for a systematic, process-driven method to help hospitals allocate resources on patients that require the most attention. 
 
@@ -57,13 +66,14 @@ Source, scraping method, cleanup, etc
 For our Collaborative Data Science in Medicine class, the MIMIC database was hosted in Google Bigquery. We developed sql queries and then combined the dataframe into a temporary folder provisioned in bigquery, from which we imported the data into R with a connection. As we cannot provide account access and for the sake of reproducibility, we placed an extract of the query result in an Rda file to analyze going forward. 
 
 # Exploratory Analysis: 
+
 ###What visualizations did you use to look at your data in different ways? What are the different statistical methods you considered? Justify the decisions you made, and show any major changes to your ideas. How did you reach these conclusions?
 
-We first used a variety of exploratory plots, including histograms and barplots to understand the distribution of our data to identify outliers, missing data and the shape of distributions to potentially inform further methods. At our core, our research question is a classification problem, so we decided to use logistic regression along with tree based methods, including first a simple decision tree, then a random forest and a gradient boosted tree.  
+We first used a variety of exploratory plots, including histograms and barplots to understand the distribution of our data to identify outliers, missing data and the shape of distributions to potentially inform further methods. At its core, our research question is a classification problem, so we decided to use logistic regression along with tree based methods, including first a simple decision tree, then a random forest and a gradient boosted tree.  
 
 # Final Analysis: What did you learn about the data? How did you answer the questions? How can you justify your answers?
 
-We learned that we are able to develop a reasonable estimate with just first day readings in the ICU, but need to incorporate additional complexity in order to effectively implement this algorithm in a clinical setting. [WRITE SOMETHING ABOUT HOW WE THOUGHT ABOUT TYPE I VS TYPE II ERROR]. As mentioned at the beginning, we sought to develop a decision support tool, and believe that our algorithm could be used to help clinicians better understand a patient's future prognosis. [COMPARED TO PREVIOUS OR CURRENTLY USED SCORES]. 
+We learned that we are able to develop a reasonable estimate with just first day readings in the ICU, but need to incorporate additional complexity in order to effectively implement this algorithm in a clinical setting. In our context, sensitivity refers to our ability to accuratelly predict patients who survived past their stay in the hospital among the total patients alive. Specificity refers to our ability to predict deaths among patients that died. Different scores are currently used in hospitals to predict mortality, for example SOFA, OASIS and SAPS II and we were able to outperform all of them. As mentioned at the beginning of the project, we sought to develop a decision support tool, and believe that our algorithm could be used to help clinicians better understand a patient's future prognosis.  
 
 ```{r}
 ##This is the script with credentials to grab the data from bigquery, we fetched the data 1000 rows at a time due to the challenges with the API (there is an issue log open with the developers it seems to try and resolve it, but this is a fix for now)
@@ -106,6 +116,8 @@ hds<- hds %>%
 ```
 
 
+Let's look at the plot of when people die.
+
 ```{r}
 plot<-hds %>% 
   mutate(deathdiff=ceiling(deathdiff))%>% 
@@ -125,7 +137,7 @@ plot
 
 
 
-We create a flag for people who die within the first 24h in the ICU 
+We create a flag for people who die within the first 24h in the ICU. We exclude them from our analysis 
 ```{r}
 hds <- hds %>% filter(died24H!=1)
 ```
@@ -188,8 +200,16 @@ hds <- hds %>% filter(age>=18) %>%
 
 We can see the age distribution now
 ```{r}
-ggplot(aes(x=age), data=hds)+
-  geom_histogram( colour="grey", stat="count")+
+hds %>%mutate(age=case_when(age==1~"17-28",
+                               age==2~"29-38",
+                               age==3~"39-48",
+                               age==4~"49-58",
+                               age==5~"59-68",
+                               age==6~"69-78",
+                               age==7~"79-88",
+                               age==8~"89-98")) %>%
+  ggplot(aes(x=age), data=.)+
+  geom_histogram( fill="navyblue", stat="count", alpha=0.4)+
   theme_bw()+
   ggtitle("Age distribution after binning")+
   theme(plot.title = element_text(hjust = 0.5))
@@ -607,6 +627,81 @@ hds <- hds %>% select(-c("los_icu","los_hospital","intime","outtime","subject_id
 
 
 
+```{r}
+# Plot distribution of ionized calcium vs serum calcium with a marginal Bar chart
+
+# OSM ATOMIC SPECTRUM COLOR SCHEME
+hds$hds_color[(2*hds$SODIUM_min) <= 200 & (2*hds$POTASSIUM_min) <=7.5] <- "#15051f"  #purple Quadrant 1
+hds$hds_color[(2*hds$SODIUM_min) >= 200 &  (2*hds$SODIUM_min) <= 270 & (2*hds$POTASSIUM_min) <=7.5] <- "#44206e" #purple Quadrant 2
+hds$hds_color[(2*hds$SODIUM_min) >= 270 & (2*hds$POTASSIUM_min) <=7.5]  <- "#2e6658" #green Quadrant 3
+hds$hds_color[(2*hds$SODIUM_min) <= 200  & (2*hds$POTASSIUM_min) >=7.5 & (2*hds$POTASSIUM_min) <=10] <- "#63c683" #limegreen Quadrant 4
+hds$hds_color[(2*hds$SODIUM_min) >= 200 & (2*hds$SODIUM_min) <= 270 & (2*hds$POTASSIUM_min) >=7.5 & (2*hds$POTASSIUM_min) <=10] <- "#7ec409" #brightergreen Quadrant 5
+hds$hds_color[(2*hds$SODIUM_min) >= 270 & (2*hds$POTASSIUM_min) >=7.5 & (2*hds$POTASSIUM_min) <=10] <- "#f3a533" #orange Quadrant 6
+hds$hds_color[(2*hds$SODIUM_min) <= 200 & (2*hds$POTASSIUM_min) >=10] <- "#e94152" #pink Quadrant 7
+hds$hds_color[(2*hds$SODIUM_min) >= 200 & (2*hds$SODIUM_min) <= 270 & (2*hds$POTASSIUM_min) >=10] <- "#b33250" #marroon Quadrant 8
+hds$hds_color[(2*hds$SODIUM_min) >= 270 & (2*hds$POTASSIUM_min) >=10] <- "#250511" #black #marroon Quadrant 9
+
+g<-ggplot(hds, aes((2*POTASSIUM_min), (2*SODIUM_min))) +
+  geom_point(color = hds$hds_color,
+             alpha = 0.05,
+             size = ((sqrt(((hds$GLUCOSE_min)/18)+((hds$BUN_min)/2.8))))) +
+  geom_vline(aes(xintercept=7), 
+             color="black", 
+             alpha = 0.5,
+             linetype="dashed", 
+             size=0.75)+
+  geom_vline(aes(xintercept=10), 
+             color="black", 
+             alpha = 0.5,
+             linetype="dashed", 
+             size=0.75)+
+  geom_hline(aes(yintercept=270),
+             color="black",
+             alpha = 0.5,
+             linetype="dashed",
+             size=0.5) +
+  geom_hline(aes(yintercept=200),
+             color="black",
+             alpha = 0.5,
+             linetype="dashed",
+             size=0.5)+
+  geom_vline(aes(xintercept=7.541543), 
+             color="red", 
+             alpha = 0.5, 
+             size=0.75)+
+  geom_hline(aes(yintercept=273.2512),
+             color="red",
+             alpha = 0.5,
+             size=0.5) +
+  geom_hline(aes(yintercept=275),
+             color="#313695",
+             alpha = 0.5,
+             size=0.9) +
+  geom_hline(aes(yintercept=295),
+             color="#313695",
+             alpha = 0.5,
+             size=0.9) +
+  theme_bw() +
+  labs(x="Scaled Potassium (x2)", 
+       y="Scaled Sodium (x2)",
+       subtitlte="Osmolarity estimation (scale doubled)") +
+  ggtitle("Assesment of osmolarity in patient population")
+ggMarginal(g, type = "histogram", fill="transparent")
+g
+
+tiff("osmolarity.tiff", units="in", width=7.5, height=5.75, res=600)
+g
+dev.off()
+
+jpeg("osmolarity.jpeg", units="in", width=7.5, height=5.75, res=600)
+g
+dev.off()
+
+```
+
+```{r}
+hds<- hds %>% select(-c(hds_color))
+```
 
 
 ```{r}
@@ -635,9 +730,11 @@ final <- cbind(transformed, not_to_standardize) %>%
 ```{r}
 res.pca = PCA(final[,2:length(final)], scale.unit=TRUE, ncp=5, graph=T)
 ```
+
 ```{r}
 summary(res.pca)
 ```
+
 
 
 ```{r}
@@ -655,6 +752,8 @@ dataTest <- final[-trainIndex,]
 ```
 
 # Models
+
+Please note, balanced accuracy is the same as AUC for all of the models. 
 
 ## Create up-sampled and down-sampled datasets: 
 ```{r}
@@ -676,6 +775,7 @@ dataTrain <- dataTrain %>% select(-lastcolumn)
 
 ##Naive Bayes Classifier Downsampled:
 ```{r warning=FALSE}
+set.seed(7) 
 # train a naive Bayes model
 fitNaiveDown <- NaiveBayes(icustay_expire_flag~., data=down_train)
 # make predictions
@@ -701,6 +801,7 @@ pred.naive<-bind_cols(pred.naive, x)
 
 ## Naive Bayes Classifier Normal:
 ```{r warning=FALSE}
+set.seed(7) 
 # train a naive Bayes model
 fitNaiveNormal <- NaiveBayes(icustay_expire_flag~., data=dataTrain)
 # make predictions
@@ -708,8 +809,6 @@ predictions <- predict(fitNaiveNormal, dataTest[,2:length(dataTest)])
 # summarize results
 confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
 
-roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions$class))
-auc(roc_obj)
 save(fitNaiveNormal, file="fitNaiveNormal.Rda")
 ```
 
@@ -729,43 +828,41 @@ levels(dataTest$icustay_expire_flag) <- c("X0", "X1")
 
 
 ## Parallelized Random Forest on balanced, downsampled data
-```{r eval=FALSE}
+```{r}
 # commenting out the random forest on the normal or upsampled data because it takes more than 10 hours even while parallelized..
-# cl <- makePSOCKcluster(4)
-# registerDoParallel(cl)
-# 
-# set.seed(7)
-# randomforest<- train(icustay_expire_flag ~ .,
-#                  data = down_train,
-#                  method = "rf",
-#                  tuneLength = 20,
-#                  metric="ROC",
-#                  trControl=trainControl(method="cv",
-#                            summaryFunction=twoClassSummary,
-#                            number= 6,
-#                            classProbs = TRUE))
-# 
-# stopCluster(cl)
+
+ #cl <- makePSOCKcluster(4)
+ #registerDoParallel(cl)
+ 
+ #set.seed(7)
+ #randomforest<- train(icustay_expire_flag ~ .,
+                 # data = down_train,
+                 # method = "rf",
+                 # tuneLength = 20,
+                 # metric="ROC",
+                  #trControl=trainControl(method="cv",
+                           # summaryFunction=twoClassSummary,
+                            #number= 6,
+                           # classProbs = TRUE))
+ 
+ #stopCluster(cl)
+#downsampleRF<-randomforest
+
 ```
 
 ```{r}
 load("downsampleRF.Rda")
-randomforest<-downsampleRF
-
 print(randomforest)
 
-predictions<-predict.train(object=randomforest,dataTest,type="prob")
 
 predictions<-predict.train(object=randomforest,dataTest,type="raw")
 confusionMatrix(predictions,dataTest$icustay_expire_flag)
-roc_obj <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions))
-auc(roc_obj)
 
 variableimportancerandomforest <- varImp(randomforest, scale = FALSE)
 variableimportancerandomforest
 
 ## for graphs
-pred.rf<-predict.train(object=downsampleRF,dataTest,type="prob")%>% 
+pred.rf<-predict.train(object=randomforest,dataTest,type="prob")%>% 
   bind_cols(dataTest)%>%
   select(X1, icustay_expire_flag)%>%
   mutate(Model="Random Forest")
@@ -794,8 +891,6 @@ print(fit.svm_down)
 predictions_svm_down<-predict.train(object=fit.svm_down,dataTest,type="raw")
 
 confusionMatrix(predictions_svm_down,dataTest$icustay_expire_flag)
-roc_svm_down <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_svm_down))
-auc(roc_svm_down)
 
 save(fit.svm_down, file="fit.svm.down.Rda")
 
@@ -824,8 +919,6 @@ print(fit.svm_normal)
 predictions_svm_normal<-predict.train(object=fit.svm_normal,dataTest,type="raw")
 
 confusionMatrix(predictions_svm_normal,dataTest$icustay_expire_flag)
-roc_svm_normal <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_svm_normal))
-auc(roc_svm_normal)
 
 save(fit.svm_normal, file="fit.svm.normal.Rda")
 
@@ -855,8 +948,6 @@ print(fit.logisticregression)
 predictions_glm_down<-predict.train(object=fit.logisticregression,dataTest,type="raw")
 
 confusionMatrix(predictions_glm_down,dataTest$icustay_expire_flag)
-roc_glm_down <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_glm_down))
-auc(roc_glm_down)
 
 
 pred.lr<-predict.train(object=fit.logisticregression,dataTest,type="prob")%>% 
@@ -866,7 +957,7 @@ pred.lr<-predict.train(object=fit.logisticregression,dataTest,type="prob")%>%
 ```
 
 ## Logistic regression on balanced, upsampled data
-```{r eval=FALSE}
+```{r }
 # on the uptrain
 set.seed(7) 
 fit.logisticregression_up <- train(icustay_expire_flag~., 
@@ -884,12 +975,10 @@ print(fit.logisticregression_up)
 predictions_glm_up<-predict.train(object=fit.logisticregression_up,dataTest,type="raw")
 
 confusionMatrix(predictions_glm_up,dataTest$icustay_expire_flag)
-roc_glm_up <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_glm_up))
-auc(roc_glm_up)
 ```
 
 ## Logistic regression on unbalanced data
-```{r eval=FALSE}
+```{r}
 # on the normal/unbalanced dataset
 set.seed(7) 
 fit.logisticregression_normal <- train(icustay_expire_flag~., 
@@ -907,13 +996,11 @@ print(fit.logisticregression_normal)
 predictions_glm_normal<-predict.train(object=fit.logisticregression_normal,dataTest,type="raw")
 
 confusionMatrix(predictions_glm_normal,dataTest$icustay_expire_flag)
-roc_glm_normal <- roc(as.numeric(dataTest$icustay_expire_flag), as.numeric(predictions_glm_normal))
-auc(roc_glm_normal)
 ```
 
 
 ## Gradient boosting with cross-validation on the unbalanced data
-```{r eval=FALSE}
+```{r}
 start.time <- Sys.time()
 # Normal data
 
@@ -932,28 +1019,28 @@ xgTest<-dataTest %>%
 
 levels(xgTest$outcome) <- c("first_class", "second_class")
 
-# # Control parameters
-# ControlParamteres <- trainControl(method = "cv",
-#                                   number = 6,
-#                                   savePredictions = TRUE,
-#                                   classProbs = TRUE)
-# 
-# # Model Parameters Grid
-# parametersGrid <-  expand.grid(eta = 0.1, 
-#                             colsample_bytree=c(0.5,0.7),
-#                             max_depth=c(3,6),
-#                             nrounds=100,
-#                             gamma=1,
-#                             min_child_weight=2,
-#                             subsample=c(0.5, 0.8)
-#                             )
-# 
-# # 6-fold Cross-validation and Model Tuning
-# modelxgboost_normal_train <- train(outcome~., 
-#                   data = xgTrain,
-#                   method = "xgbTree",
-#                   trControl = ControlParamteres,
-#                   tuneGrid=parametersGrid)
+ # Control parameters
+ ControlParamteres <- trainControl(method = "cv",
+                                   number = 6,
+                                   savePredictions = TRUE,
+                                   classProbs = TRUE)
+ 
+ # Model Parameters Grid
+ parametersGrid <-  expand.grid(eta = 0.1, 
+                             colsample_bytree=c(0.5,0.7),
+                             max_depth=c(3,6),
+                             nrounds=100,
+                             gamma=1,
+                             min_child_weight=2,
+                             subsample=c(0.5, 0.8)
+                             )
+ 
+ # 6-fold Cross-validation and Model Tuning
+ modelxgboost_normal_train <- train(outcome~., 
+                   data = xgTrain,
+                   method = "xgbTree",
+                   trControl = ControlParamteres,
+                   tuneGrid=parametersGrid)
 
 # Use the above results from the modelxgboost_down_train to get the best parameters for the training model
 
@@ -973,7 +1060,7 @@ parametersGrid <-  expand.grid(eta = 0.1,
                                min_child_weight=2,
                                subsample=c(0.5)
 )
-
+set.seed(7)
 # 6-fold Cross-validation and Model Tuning
 modelxgboost_normal_train <- train(outcome~., 
                                    data = xgTrain,
@@ -987,15 +1074,6 @@ predictions<-predict(modelxgboost_normal_train,xgTest)
 # Confusion matrix
 confusionMatrix(predictions,xgTest$outcome)
 
-
-# ROC
-roc_classifier  <- roc(xgTest$outcome, as.numeric(predictions))
-plot(roc_classifier)
-plot(roc_classifier, add=TRUE, colour="grey10")
-legend(0, 0.5, legend=c("Model ROC"),
-       col=c("grey10", 1), lty=1)
-
-auc(roc_classifier)
 
 end.time <- Sys.time()
 time.taken <- end.time - start.time
@@ -1082,12 +1160,6 @@ predictions<-predict(modelxgboost_down_train,xgTest)
 
 # Confusion matrix
 confusionMatrix(predictions,xgTest$outcome)
-
-
-
-# ROC
-roc_classifier  <- roc(xgTest$outcome, as.numeric(predictions))
-auc(roc_classifier)
 
 
 
