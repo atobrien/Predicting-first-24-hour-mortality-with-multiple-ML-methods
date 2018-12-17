@@ -727,6 +727,7 @@ final <- cbind(transformed, not_to_standardize) %>%
 ```
 
 ## PCA
+### We perform PCA so that we can identify what features to focus on and use in following models. We validated the variables chosen and those removed based on clinical expertise. 
 ```{r}
 res.pca = PCA(final[,2:length(final)], scale.unit=TRUE, ncp=5, graph=T)
 ```
@@ -812,6 +813,8 @@ confusionMatrix(predictions$class, dataTest$icustay_expire_flag)
 save(fitNaiveNormal, file="fitNaiveNormal.Rda")
 ```
 
+We found it interesting that the Naive Bayes model seems to be robust to class imbalance, though this observation was unsurprising in conversations with peers. 
+
 ## Change outcome to factor for additional models to work
 ```{r}
 #change variables and levels of flags
@@ -867,6 +870,8 @@ pred.rf<-predict.train(object=randomforest,dataTest,type="prob")%>%
   select(X1, icustay_expire_flag)%>%
   mutate(Model="Random Forest")
 ```
+
+The feature importance plot confirms the features otherwise identified in the logistic regression. There seemed to be varying results based on multiple iterations and potential complications with seeds, which is another reason we opted for the logistic regression as shown in our plots below.  
 
 ## SVM on balanced, downsampled data
 ```{r eval=F}
@@ -927,6 +932,8 @@ pred.svm_normal<-predict.train(object=fit.svm_normal,dataTest,type="prob")%>%
   select(X1, icustay_expire_flag)%>%
   mutate(Model="Support Vector Machine")
 ```
+
+It was interesting to see the similar performance of SVM with the logistic regression models, though as we did more research, recognize that we need to do more exploration to understand the linearity (or lack thereof) amongst the features in addition to other kernels. 
 
 ## Logistic regression on balanced, downsampled data
 
@@ -998,6 +1005,7 @@ predictions_glm_normal<-predict.train(object=fit.logisticregression_normal,dataT
 confusionMatrix(predictions_glm_normal,dataTest$icustay_expire_flag)
 ```
 
+The logistic regression had a good balance of interpretability and accuracy, and from previous experience interacting with clinicians, believe that this will be among the easiest to practically implement given the general familiarity with regression compared to other machine learning techniques. This is an important consideration because this algorithm is intended to be a support tool, not a replacement, and therefore, interpretability and the option to further triage potential issues is critical in informing the decisions of the healthcare provider.
 
 ## Gradient boosting with cross-validation on the unbalanced data
 ```{r}
@@ -1175,3 +1183,5 @@ pred.egb<-predict.train(object=modelxgboost_down_train,dataTest,type="prob")%>%
   mutate(Model="Extreme Gradient Boost")
 
 ```
+
+It was interesting to explore the basics of boosted trees with grid search and various other parameters, though we ultimately returned to the caret package for consistency of comparison between different models. 
